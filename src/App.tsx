@@ -189,16 +189,21 @@ export default function App() {
   };
 
   // Filter products for catalogue tab
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = (products || []).filter((p) => {
+    if (!p) return false;
     if (catalogueFilter === 'all') return true;
-    if (catalogueFilter === 'terracotta') return p.title.toLowerCase().includes('terracotta') || p.craftTechnique.toLowerCase().includes('clay');
-    if (catalogueFilter === 'silk') return p.title.toLowerCase().includes('silk') || p.materials.some(m => m.toLowerCase().includes('silk'));
-    if (catalogueFilter === 'in_stock') return p.stockQuantity > 0;
+    const title = (p.title || '').toLowerCase();
+    const technique = (p.craftTechnique || '').toLowerCase();
+    const mats = Array.isArray(p.materials) ? p.materials : [];
+    if (catalogueFilter === 'terracotta') return title.includes('terracotta') || technique.includes('clay');
+    if (catalogueFilter === 'silk') return title.includes('silk') || mats.some((m) => String(m).toLowerCase().includes('silk'));
+    if (catalogueFilter === 'in_stock') return Number(p.stockQuantity || 0) > 0;
     return true;
   });
 
   // Filter orders for orders tab
-  const filteredOrders = orders.filter((o) => {
+  const filteredOrders = (orders || []).filter((o) => {
+    if (!o) return false;
     if (orderFilter === 'all') return true;
     return o.status === orderFilter;
   });
@@ -206,8 +211,8 @@ export default function App() {
   // Buyer marketplace: starts from the static multi-artisan pool, then merges any
   // products the currently logged-in artisan has listed this session (de-duped by id).
   const marketplaceProducts = [
-    ...MARKETPLACE_PRODUCTS.filter((mp) => !products.find((p) => p.id === mp.id)),
-    ...products,
+    ...MARKETPLACE_PRODUCTS.filter((mp) => !(products || []).find((p) => p && p.id === mp.id)),
+    ...(products || []),
   ];
 
   return (
