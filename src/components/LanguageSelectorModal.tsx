@@ -111,18 +111,45 @@ export const LanguageSelectorModal: React.FC<LanguageSelectorProps> = ({
           stepHint="Voice Language Selection"
           suggestedPhrases={[
             'English',
-            'हिन्दी (Hindi)',
-            'தமிழ் (Tamil)',
-            'తెలుగు (Telugu)',
-            'বাংলা (Bengali)',
-            'मराठी (Marathi)',
+            'हिन्दी',
+            'தமிழ்',
+            'తెలుగు',
+            'বাংলা',
+            'मराठी',
           ]}
         />
+
+        {/* Mobile-Friendly Language Selection Grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 my-3">
+          {SUPPORTED_LANGUAGES.map((lang) => {
+            const isSelected = activeLang === lang.code;
+            return (
+              <button
+                key={lang.code}
+                type="button"
+                onClick={() => handleLanguageClick(lang.code)}
+                className={`p-2.5 rounded-xl text-left border transition-all cursor-pointer flex flex-col justify-between ${
+                  isSelected
+                    ? 'bg-[#2d6a4f] text-white border-[#1b4332] shadow-md ring-2 ring-[#52b788]'
+                    : 'bg-white/80 hover:bg-white text-[#1b4332] border-white/60 shadow-xs'
+                }`}
+              >
+                <div className="flex items-center justify-between w-full">
+                  <span className="font-bold text-sm leading-tight">{lang.nativeName}</span>
+                  {isSelected && <Check className="w-3.5 h-3.5 text-white" />}
+                </div>
+                <span className={`text-[11px] mt-0.5 ${isSelected ? 'text-white/80' : 'text-[#455A45]'}`}>
+                  {lang.name}
+                </span>
+              </button>
+            );
+          })}
+        </div>
 
         {/* Sleek Minimalist Continue Bar */}
         <div className="flex items-center justify-between gap-3 bg-white/85 backdrop-blur-md px-4 py-3 rounded-2xl border border-white/70 shadow-[4px_4px_12px_#d1dbd1,-4px_-4px_12px_#ffffff]">
           <div className="text-xs font-medium text-[#455A45]">
-            Language: <span className="font-extrabold text-[#2d6a4f]">{currentLangConfig.nativeName} ({currentLangConfig.name})</span>
+            Selected: <span className="font-extrabold text-[#2d6a4f]">{currentLangConfig.nativeName} ({currentLangConfig.name})</span>
           </div>
           <button
             type="button"

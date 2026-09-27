@@ -8,7 +8,7 @@
       "destination": "/api"
     },
     {
-      "source": "/(.*)",
+      "source": "/((?!assets/|favicon\\.ico|.*\\..*).*)",
       "destination": "/index.html"
     }
   ]
