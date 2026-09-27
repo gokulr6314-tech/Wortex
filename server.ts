@@ -2,7 +2,6 @@ import express from 'express';
 import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
-import { createServer as createViteServer } from 'vite';
 // Module 4 & 5 — deterministic pricing + SEO engines reused server-side
 import { analyzeMarketPricing } from './src/services/pricing/marketPricing';
 import { detectPriceAnomaly } from './src/services/pricing/anomaly';
@@ -718,10 +717,15 @@ app.get('/api/db/health', (req, res) => {
 
 
 // -------------------------------------------------------------
-// Vite Middleware / Static Serving
+// Vite Middleware / Static Serving (Local / Standalone mode)
 // -------------------------------------------------------------
 async function startServer() {
+  if (process.env.VERCEL) {
+    return;
+  }
+
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: 'spa',
@@ -741,3 +745,5 @@ async function startServer() {
 }
 
 startServer();
+
+export default app;
