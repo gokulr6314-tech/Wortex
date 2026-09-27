@@ -24,6 +24,8 @@ interface NavbarProps {
   isVoiceActive?: boolean;
   ordersCount?: number;
   productsCount?: number;
+  userRole?: 'Buyer' | 'Seller';
+  onToggleRole?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
@@ -37,6 +39,8 @@ export const Navbar: React.FC<NavbarProps> = ({
   isVoiceActive = false,
   ordersCount = 0,
   productsCount = 0,
+  userRole = 'Seller',
+  onToggleRole,
 }) => {
   const currentLangConfig =
     SUPPORTED_LANGUAGES.find((l) => l.code === language) ||
@@ -81,78 +85,140 @@ export const Navbar: React.FC<NavbarProps> = ({
             </div>
           </button>
 
-          {/* 2. Navigation Links: Catalogue, Orders, Market Linkage, Shop Analytics */}
+          {/* 2. Navigation Links: Dynamic based on userRole (Buyer vs Seller) */}
           <nav className="hidden md:flex items-center gap-1.5 bg-[#E1EBE1]/70 p-1.5 rounded-2xl border border-white/60 shadow-[inset_2px_2px_5px_#d1dbd1,inset_-2px_-2px_5px_#ffffff]">
-            {/* Catalogue */}
-            <button
-              type="button"
-              onClick={() => onSelectTab('catalogue')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'catalogue'
-                  ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
-                  : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
-              }`}
-            >
-              <Store className="w-3.5 h-3.5 text-[#2d6a4f]" />
-              <span>Catalogue</span>
-              {productsCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
-                  {productsCount}
-                </span>
-              )}
-            </button>
+            {userRole === 'Buyer' ? (
+              <>
+                {/* Buyer Marketplace */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('catalogue')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'catalogue'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Marketplace</span>
+                  {productsCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {productsCount}
+                    </span>
+                  )}
+                </button>
 
-            {/* Orders */}
-            <button
-              type="button"
-              onClick={() => onSelectTab('orders')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'orders'
-                  ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
-                  : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
-              }`}
-            >
-              <Package className="w-3.5 h-3.5 text-[#2d6a4f]" />
-              <span>Orders</span>
-              {ordersCount > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
-                  {ordersCount}
-                </span>
-              )}
-            </button>
+                {/* Buyer Orders */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('orders')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'orders'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>My Orders</span>
+                  {ordersCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {ordersCount}
+                    </span>
+                  )}
+                </button>
+              </>
+            ) : (
+              <>
+                {/* Seller Catalogue */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('catalogue')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'catalogue'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Store className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Catalogue</span>
+                  {productsCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {productsCount}
+                    </span>
+                  )}
+                </button>
 
-            {/* Market Linkage (Etsy / ONDC sync status) */}
-            <button
-              type="button"
-              onClick={() => onSelectTab('market_linkage')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'market_linkage'
-                  ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
-                  : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
-              }`}
-            >
-              <Globe2 className="w-3.5 h-3.5 text-[#2d6a4f]" />
-              <span>Market Linkage</span>
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-            </button>
+                {/* Seller Orders */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('orders')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'orders'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Package className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Orders</span>
+                  {ordersCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {ordersCount}
+                    </span>
+                  )}
+                </button>
 
-            {/* Shop Analytics */}
-            <button
-              type="button"
-              onClick={() => onSelectTab('analytics')}
-              className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
-                activeTab === 'analytics'
-                  ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
-                  : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
-              }`}
-            >
-              <BarChart3 className="w-3.5 h-3.5 text-[#2d6a4f]" />
-              <span>Shop Analytics</span>
-            </button>
+                {/* Market Linkage */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('market_linkage')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'market_linkage'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Globe2 className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Market Linkage</span>
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+                </button>
+
+                {/* Shop Analytics */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('analytics')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'analytics'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <BarChart3 className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Shop Analytics</span>
+                </button>
+              </>
+            )}
           </nav>
 
-          {/* 3. Action Controls: Language Pill, Audio Toggle */}
-          <div className="flex items-center gap-3 sm:gap-4">
+          {/* 3. Action Controls: Role Switcher, Language Pill, Audio Toggle */}
+          <div className="flex items-center gap-2.5 sm:gap-3">
+            {/* Role Switcher Button */}
+            {onToggleRole && (
+              <button
+                type="button"
+                onClick={onToggleRole}
+                className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all cursor-pointer shadow-xs ${
+                  userRole === 'Buyer'
+                    ? 'bg-blue-50 hover:bg-blue-100 text-blue-800 border-blue-200'
+                    : 'bg-emerald-50 hover:bg-emerald-100 text-[#1b4332] border-emerald-300'
+                }`}
+                title={`Currently in ${userRole} mode. Click to switch.`}
+              >
+                <span className={`w-2 h-2 rounded-full ${userRole === 'Buyer' ? 'bg-blue-600' : 'bg-emerald-600'}`} />
+                <span className="hidden sm:inline">{userRole === 'Buyer' ? 'Buyer Mode' : 'Artisan Mode'}</span>
+                <span className="text-[10px] text-[#40916c] underline font-semibold sm:ml-0.5">Switch</span>
+              </button>
+            )}
+
             {/* Language Switcher */}
             <button
               type="button"
@@ -182,54 +248,94 @@ export const Navbar: React.FC<NavbarProps> = ({
 
         {/* Mobile Navigation Bar */}
         <div className="md:hidden flex items-center justify-around py-2.5 border-t border-white/50 text-[11px] font-bold">
-          <button
-            type="button"
-            onClick={() => onSelectTab('catalogue')}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
-              activeTab === 'catalogue'
-                ? 'bg-white text-[#1b4332] shadow-xs'
-                : 'text-[#455A45]'
-            }`}
-          >
-            <Store className="w-3.5 h-3.5" />
-            <span>Catalogue</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTab('orders')}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
-              activeTab === 'orders'
-                ? 'bg-white text-[#1b4332] shadow-xs'
-                : 'text-[#455A45]'
-            }`}
-          >
-            <Package className="w-3.5 h-3.5" />
-            <span>Orders</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTab('market_linkage')}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
-              activeTab === 'market_linkage'
-                ? 'bg-white text-[#1b4332] shadow-xs'
-                : 'text-[#455A45]'
-            }`}
-          >
-            <Globe2 className="w-3.5 h-3.5" />
-            <span>Linkage</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => onSelectTab('analytics')}
-            className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
-              activeTab === 'analytics'
-                ? 'bg-white text-[#1b4332] shadow-xs'
-                : 'text-[#455A45]'
-            }`}
-          >
-            <BarChart3 className="w-3.5 h-3.5" />
-            <span>Analytics</span>
-          </button>
+          {userRole === 'Buyer' ? (
+            <>
+              <button
+                type="button"
+                onClick={() => onSelectTab('catalogue')}
+                className={`flex items-center gap-1.5 py-1 px-3 rounded-lg transition-colors ${
+                  activeTab === 'catalogue'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Marketplace</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('orders')}
+                className={`flex items-center gap-1.5 py-1 px-3 rounded-lg transition-colors ${
+                  activeTab === 'orders'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>My Orders</span>
+              </button>
+              {onToggleRole && (
+                <button
+                  type="button"
+                  onClick={onToggleRole}
+                  className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-emerald-50 text-emerald-800 text-[10px] font-bold"
+                >
+                  <span>Artisan View</span>
+                </button>
+              )}
+            </>
+          ) : (
+            <>
+              <button
+                type="button"
+                onClick={() => onSelectTab('catalogue')}
+                className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
+                  activeTab === 'catalogue'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Store className="w-3.5 h-3.5" />
+                <span>Catalogue</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('orders')}
+                className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
+                  activeTab === 'orders'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Package className="w-3.5 h-3.5" />
+                <span>Orders</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('market_linkage')}
+                className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
+                  activeTab === 'market_linkage'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Globe2 className="w-3.5 h-3.5" />
+                <span>Linkage</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('analytics')}
+                className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
+                  activeTab === 'analytics'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <BarChart3 className="w-3.5 h-3.5" />
+                <span>Analytics</span>
+              </button>
+            </>
+          )}
         </div>
       </div>
     </header>

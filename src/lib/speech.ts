@@ -19,6 +19,8 @@ export class SpeechService {
   private static recognition: any = null;
   private static isListeningState = false;
   private static cachedVoices: SpeechSynthesisVoice[] | null = null;
+  private static activeAudioElement: HTMLAudioElement | null = null;
+
 
   static getCapabilities(): SpeechCapabilities {
     const ttsAvailable = typeof window !== 'undefined' && 'speechSynthesis' in window;
@@ -64,6 +66,30 @@ export class SpeechService {
   // Speaks text using Web Speech API in the selected regional language.
   // Voices are preloaded lazily on first use and gracefully fall back on desktop
   // so desktop narration never remains silent.
+  // Chrome desktop: keep speechSynthesis alive by calling resume() every 14s.
+  // Chrome silently pauses synthesis for long utterances — this prevents TTS from going dead.
+  private static keepaliveInterval: ReturnType<typeof setInterval> | null = null;
+
+  private static startKeepalive(): void {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    if (this.keepaliveInterval) return; // already running
+    this.keepaliveInterval = setInterval(() => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }
+    }, 14000);
+  }
+
+  private static stopKeepalive(): void {
+    if (this.keepaliveInterval) {
+      clearInterval(this.keepaliveInterval);
+      this.keepaliveInterval = null;
+    }
+  }
+
   static speak(
     text: string,
     languageCode: SupportedLanguageCode,
@@ -118,10 +144,12 @@ export class SpeechService {
           if (hasFinished) return;
           hasFinished = true;
           (window as any).__activeUtterance = null;
+          this.stopKeepalive();
           if (onEnd) onEnd();
         };
 
         utterance.onstart = () => {
+          this.startKeepalive(); // begin Chrome keepalive once speech actually starts
           if (onStart) onStart();
         };
         utterance.onend = finish;
@@ -171,7 +199,9 @@ export class SpeechService {
     }
   }
 
-  // Starts microphone voice recognition with browser support fallback
+  // Starts microphone voice recognition with browser support fallback.
+  // Always cancels TTS first and waits 300ms before opening the mic to
+  // prevent the bot recording its own synthesised voice (echo/feedback bug).
   static startListening(
     languageCode: SupportedLanguageCode,
     handlers: SpeechRecognitionResultHandler
@@ -184,63 +214,72 @@ export class SpeechService {
       return false;
     }
 
-    try {
-      if (this.recognition) {
-        try {
-          this.recognition.abort();
-        } catch {
-          // ignore
-        }
-      }
+    // Stop any ongoing TTS before opening mic (prevents echo/feedback loop)
+    this.stopSpeaking();
+    this.stopKeepalive();
 
-      const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === languageCode);
-      const targetLocale = langConfig ? langConfig.speechLocale : 'en-IN';
-
-      this.recognition = new SpeechRec();
-      this.recognition.continuous = false;
-      this.recognition.interimResults = true;
-      this.recognition.lang = targetLocale;
-
-      this.recognition.onstart = () => {
-        this.isListeningState = true;
-      };
-
-      this.recognition.onresult = (event: any) => {
-        let interim = '';
-        let final = '';
-
-        for (let i = event.resultIndex; i < event.results.length; ++i) {
-          if (event.results[i].isFinal) {
-            final += event.results[i][0].transcript;
-          } else {
-            interim += event.results[i][0].transcript;
+    const startRec = () => {
+      try {
+        if (this.recognition) {
+          try {
+            this.recognition.abort();
+          } catch {
+            // ignore
           }
         }
 
-        if (final) {
-          handlers.onResult(final, true);
-        } else if (interim) {
-          handlers.onResult(interim, false);
-        }
-      };
+        const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === languageCode);
+        const targetLocale = langConfig ? langConfig.speechLocale : 'en-IN';
 
-      this.recognition.onerror = (event: any) => {
+        this.recognition = new SpeechRec();
+        this.recognition.continuous = false;
+        this.recognition.interimResults = true;
+        this.recognition.lang = targetLocale;
+
+        this.recognition.onstart = () => {
+          this.isListeningState = true;
+        };
+
+        this.recognition.onresult = (event: any) => {
+          let interim = '';
+          let final = '';
+
+          for (let i = event.resultIndex; i < event.results.length; ++i) {
+            if (event.results[i].isFinal) {
+              final += event.results[i][0].transcript;
+            } else {
+              interim += event.results[i][0].transcript;
+            }
+          }
+
+          if (final) {
+            handlers.onResult(final, true);
+          } else if (interim) {
+            handlers.onResult(interim, false);
+          }
+        };
+
+        this.recognition.onerror = (event: any) => {
+          this.isListeningState = false;
+          handlers.onError(event.error || 'Speech capture error');
+        };
+
+        this.recognition.onend = () => {
+          this.isListeningState = false;
+          handlers.onEnd();
+        };
+
+        this.recognition.start();
+      } catch (err: any) {
         this.isListeningState = false;
-        handlers.onError(event.error || 'Speech capture error');
-      };
+        handlers.onError(err.message || 'Failed to start microphone');
+      }
+    };
 
-      this.recognition.onend = () => {
-        this.isListeningState = false;
-        handlers.onEnd();
-      };
-
-      this.recognition.start();
-      return true;
-    } catch (err: any) {
-      this.isListeningState = false;
-      handlers.onError(err.message || 'Failed to start microphone');
-      return false;
-    }
+    // 300ms silence gap ensures TTS audio fully drains from speakers before
+    // the mic opens — prevents the recognition engine from picking up the bot's own voice.
+    setTimeout(startRec, 300);
+    return true;
   }
 
   static stopListening(): void {

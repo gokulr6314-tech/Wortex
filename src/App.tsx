@@ -43,6 +43,7 @@ import {
   INITIAL_PRODUCTS,
   INITIAL_ORDERS,
   INITIAL_ANALYTICS,
+  MARKETPLACE_PRODUCTS,
 } from './lib/mockData';
 import { DatabaseStore } from './lib/supabase';
 import { Navbar, ActiveNavTab } from './components/Navbar';
@@ -53,6 +54,7 @@ import { ProductImageCapture } from './components/ProductImageCapture';
 import { VoiceAuthGate, AuthSession } from './components/VoiceAuthGate';
 import VoiceListingTrigger from './components/voice/VoiceListingTrigger';
 import VoiceListingAssistant from './components/voice/VoiceListingAssistant';
+import { BuyerMarketplaceView } from './components/BuyerMarketplaceView';
 import { buildAltText } from './services/seo/altText';
 import {
   ResponsiveContainer,
@@ -83,6 +85,7 @@ export default function App() {
   // Must be completed before accessing main dashboard/storefront features
   const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
   const [authSession, setAuthSession] = useState<AuthSession | null>(null);
+  const [userRole, setUserRole] = useState<'Buyer' | 'Seller'>('Seller');
 
   // App Data State (Synced from DatabaseStore / mockData)
   const [artisan, setArtisan] = useState<ArtisanProfile>(INITIAL_ARTISAN);
@@ -117,6 +120,10 @@ export default function App() {
     SpeechService.unlockAudio();
     setAuthSession(session);
     setIsAuthenticated(true);
+    setUserRole(session.role);
+    if (session.role === 'Buyer') {
+      setActiveTab('catalogue');
+    }
     if (session.identifier) {
       setArtisan((prev) => ({
         ...prev,
@@ -124,6 +131,10 @@ export default function App() {
         village: session.address || prev.village,
       }));
     }
+  };
+
+  const handleToggleRole = () => {
+    setUserRole((prev) => (prev === 'Buyer' ? 'Seller' : 'Buyer'));
   };
 
   // Handle when Voice Assistant completes cataloguing a new product
@@ -177,6 +188,13 @@ export default function App() {
     return o.status === orderFilter;
   });
 
+  // Buyer marketplace: starts from the static multi-artisan pool, then merges any
+  // products the currently logged-in artisan has listed this session (de-duped by id).
+  const marketplaceProducts = [
+    ...MARKETPLACE_PRODUCTS.filter((mp) => !products.find((p) => p.id === mp.id)),
+    ...products,
+  ];
+
   return (
     <div className="min-h-screen bg-[#F0F7F0] text-[#1b4332] flex flex-col font-sans selection:bg-[#C8E6C9]">
       {/* ------------------------------------------------------------- */}
@@ -227,15 +245,28 @@ export default function App() {
         isVoiceActive={isVoiceModalOpen}
         ordersCount={orders.length}
         productsCount={products.length}
+        userRole={userRole}
+        onToggleRole={handleToggleRole}
       />
 
       {/* 2. Main Content Area */}
       <main className="flex-1 max-w-[1440px] w-full mx-auto px-5 sm:px-8 lg:px-12 py-8 sm:py-10 transition-all">
         {/* ======================================================== */}
-        {/* TAB 1: CATALOGUE VIEW */}
+        {/* TAB 1: CATALOGUE / MARKETPLACE VIEW */}
         {/* ======================================================== */}
         {activeTab === 'catalogue' && (
-          <div className="space-y-8">
+          userRole === 'Buyer' ? (
+            <BuyerMarketplaceView
+              products={marketplaceProducts}
+              language={language}
+              onOrderPlaced={(newOrder) => {
+                DatabaseStore.addOrder(newOrder);
+                setOrders((prev) => [newOrder, ...prev]);
+              }}
+              onBackToSeller={handleToggleRole}
+            />
+          ) : (
+            <div className="space-y-8">
             {/* Hero Banner */}
             <div className="bg-gradient-to-br from-[#1b4332] via-[#2d6a4f] to-[#40916c] text-white rounded-[32px] overflow-hidden shadow-[14px_14px_30px_#d1dbd1,-14px_-14px_30px_#ffffff] border border-white/30 relative">
               {/* Background decor blobs */}
@@ -485,110 +516,210 @@ export default function App() {
               )}
             </div>
           </div>
+          )
         )}
 
         {/* ======================================================== */}
         {/* TAB 2: ORDERS VIEW */}
         {/* ======================================================== */}
         {activeTab === 'orders' && (
-          <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-              <div>
-                <h1 className="text-2xl font-extrabold text-[#1b4332] tracking-tight">
-                  Artisan Orders & Direct Payouts
-                </h1>
-                <p className="text-xs sm:text-sm text-[#455A45] mt-0.5">
-                  Direct UPI bank deposits on fulfillment with 0% middleman deduction.
-                </p>
+          userRole === 'Buyer' ? (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-extrabold text-[#1b4332] tracking-tight">
+                    My Purchases &amp; Orders
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#455A45] mt-0.5">
+                    Track your authentic handcrafted items shipped directly from rural artisans.
+                  </p>
+                </div>
+
+                {/* Order Status Filter */}
+                <div className="flex items-center gap-1.5 bg-[#E1EBE1] p-1 rounded-2xl border border-white/60 shadow-inner">
+                  {(['all', 'pending', 'fulfilled'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setOrderFilter(st)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all capitalize cursor-pointer ${
+                        orderFilter === st
+                          ? 'bg-[#1b4332] text-white shadow-xs'
+                          : 'text-[#455A45] hover:bg-white/40'
+                      }`}
+                    >
+                      {st === 'all' ? `All (${orders.length})` : st === 'pending' ? 'Preparing / In Transit' : 'Delivered'}
+                    </button>
+                  ))}
+                </div>
               </div>
 
-              {/* Order Status Filter */}
-              <div className="flex items-center gap-1.5 bg-[#E1EBE1] p-1 rounded-2xl border border-white/60 shadow-inner">
-                {(['all', 'pending', 'fulfilled', 'canceled'] as const).map((st) => (
-                  <button
-                    key={st}
-                    type="button"
-                    onClick={() => setOrderFilter(st)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all capitalize cursor-pointer ${
-                      orderFilter === st
-                        ? 'bg-[#1b4332] text-white shadow-xs'
-                        : 'text-[#455A45] hover:bg-white/40'
-                    }`}
+              {/* Buyer Orders List */}
+              <div className="space-y-4">
+                {filteredOrders.length === 0 ? (
+                  <div className="text-center py-12 bg-white/70 rounded-3xl p-6">
+                    <Package className="w-10 h-10 text-slate-400 mx-auto mb-2" />
+                    <p className="text-sm font-bold text-[#1b4332]">No orders placed yet</p>
+                    <p className="text-xs text-[#455A45] mt-1">Browse the Marketplace to order directly from village artisans!</p>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab('catalogue')}
+                      className="mt-3 px-5 py-2 rounded-xl bg-[#2d6a4f] text-white text-xs font-bold shadow-sm hover:bg-[#1b4332] cursor-pointer"
+                    >
+                      Explore Marketplace
+                    </button>
+                  </div>
+                ) : (
+                  filteredOrders.map((order) => (
+                    <div
+                      key={order.id}
+                      className="bg-white/90 backdrop-blur-md rounded-2xl p-5 border border-white/80 shadow-[4px_4px_12px_#d1dbd1,-4px_-4px_12px_#ffffff] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
+                    >
+                      <div className="flex items-center gap-4 min-w-0">
+                        <img
+                          src={order.productImageUrl}
+                          alt={order.productTitle}
+                          className="w-16 h-16 rounded-2xl object-cover border border-white/80 shadow-xs flex-shrink-0"
+                        />
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <span className="font-mono text-xs font-extrabold text-[#2d6a4f]">
+                              {order.orderNumber}
+                            </span>
+                            <span
+                              className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                                order.status === 'fulfilled'
+                                  ? 'bg-emerald-100 text-emerald-800'
+                                  : 'bg-amber-100 text-amber-800 animate-pulse'
+                              }`}
+                            >
+                              {order.status === 'fulfilled' ? 'Delivered' : 'Preparing for Dispatch'}
+                            </span>
+                          </div>
+                          <h4 className="font-bold text-sm text-[#1b4332] truncate mt-0.5">
+                            {order.productTitle}
+                          </h4>
+                          <p className="text-xs text-[#455A45]">
+                            Artisan: <span className="font-semibold text-[#1b4332]">{order.artisanName}</span>
+                          </p>
+                          <p className="text-[11px] text-slate-500 truncate mt-0.5">
+                            Delivering to: {order.shippingAddress || `${order.buyerCity}, ${order.buyerState}`}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between sm:justify-end gap-5 flex-shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                        <div className="text-left sm:text-right">
+                          <p className="text-[10px] text-[#455A45] uppercase font-bold">Total Paid</p>
+                          <p className="text-lg font-black text-[#1b4332]">₹{order.amount}</p>
+                          <p className="text-[10px] text-emerald-600 font-semibold">{order.paymentMethod || 'UPI Payment'}</p>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-2xl font-extrabold text-[#1b4332] tracking-tight">
+                    Artisan Orders &amp; Direct Payouts
+                  </h1>
+                  <p className="text-xs sm:text-sm text-[#455A45] mt-0.5">
+                    Direct UPI bank deposits on fulfillment with 0% middleman deduction.
+                  </p>
+                </div>
+
+                {/* Order Status Filter */}
+                <div className="flex items-center gap-1.5 bg-[#E1EBE1] p-1 rounded-2xl border border-white/60 shadow-inner">
+                  {(['all', 'pending', 'fulfilled', 'canceled'] as const).map((st) => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setOrderFilter(st)}
+                      className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all capitalize cursor-pointer ${
+                        orderFilter === st
+                          ? 'bg-[#1b4332] text-white shadow-xs'
+                          : 'text-[#455A45] hover:bg-white/40'
+                      }`}
+                    >
+                      {st} ({orders.filter((o) => (st === 'all' ? true : o.status === st)).length})
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Orders List */}
+              <div className="space-y-4">
+                {filteredOrders.map((order) => (
+                  <div
+                    key={order.id}
+                    className="bg-white/85 backdrop-blur-md rounded-2xl p-5 border border-white/80 shadow-[4px_4px_12px_#d1dbd1,-4px_-4px_12px_#ffffff] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
                   >
-                    {st} ({orders.filter((o) => (st === 'all' ? true : o.status === st)).length})
-                  </button>
+                    <div className="flex items-center gap-4 min-w-0">
+                      <img
+                        src={order.productImageUrl}
+                        alt={order.productTitle}
+                        className="w-16 h-16 rounded-2xl object-cover border border-white/80 shadow-xs flex-shrink-0"
+                      />
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="font-mono text-xs font-extrabold text-[#2d6a4f]">
+                            {order.orderNumber}
+                          </span>
+                          <span
+                            className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
+                              order.status === 'fulfilled'
+                                ? 'bg-emerald-100 text-emerald-800'
+                                : order.status === 'pending'
+                                ? 'bg-amber-100 text-amber-800 animate-pulse'
+                                : 'bg-red-100 text-red-800'
+                            }`}
+                          >
+                            {order.status}
+                          </span>
+                        </div>
+                        <h4 className="font-bold text-sm text-[#1b4332] truncate mt-0.5">
+                          {order.productTitle}
+                        </h4>
+                        <p className="text-xs text-[#455A45]">
+                          Buyer: {order.buyerName} • {order.buyerCity}, {order.buyerState}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Financial Details & Actions */}
+                    <div className="flex items-center justify-between sm:justify-end gap-6 flex-shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
+                      <div className="text-left sm:text-right">
+                        <p className="text-[10px] text-[#455A45] uppercase font-bold">Artisan Earnings</p>
+                        <p className="text-lg font-black text-emerald-600">₹{order.artisanEarnings}</p>
+                        <p className="text-[10px] text-[#455A45]">Total: ₹{order.amount}</p>
+                      </div>
+
+                      <div className="flex items-center gap-2">
+                        {order.status === 'pending' && (
+                          <button
+                            type="button"
+                            onClick={() => handleStatusChange(order.id, 'fulfilled')}
+                            className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
+                          >
+                            Mark Fulfilled
+                          </button>
+                        )}
+                        {order.status === 'fulfilled' && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
+                            <Check className="w-3.5 h-3.5" /> Payout Settled
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
-
-            {/* Orders List */}
-            <div className="space-y-4">
-              {filteredOrders.map((order) => (
-                <div
-                  key={order.id}
-                  className="bg-white/85 backdrop-blur-md rounded-2xl p-5 border border-white/80 shadow-[4px_4px_12px_#d1dbd1,-4px_-4px_12px_#ffffff] flex flex-col sm:flex-row sm:items-center justify-between gap-4"
-                >
-                  <div className="flex items-center gap-4 min-w-0">
-                    <img
-                      src={order.productImageUrl}
-                      alt={order.productTitle}
-                      className="w-16 h-16 rounded-2xl object-cover border border-white/80 shadow-xs flex-shrink-0"
-                    />
-                    <div className="min-w-0">
-                      <div className="flex items-center gap-2">
-                        <span className="font-mono text-xs font-extrabold text-[#2d6a4f]">
-                          {order.orderNumber}
-                        </span>
-                        <span
-                          className={`px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase ${
-                            order.status === 'fulfilled'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : order.status === 'pending'
-                              ? 'bg-amber-100 text-amber-800 animate-pulse'
-                              : 'bg-red-100 text-red-800'
-                          }`}
-                        >
-                          {order.status}
-                        </span>
-                      </div>
-                      <h4 className="font-bold text-sm text-[#1b4332] truncate mt-0.5">
-                        {order.productTitle}
-                      </h4>
-                      <p className="text-xs text-[#455A45]">
-                        Buyer: {order.buyerName} • {order.buyerCity}, {order.buyerState}
-                      </p>
-                    </div>
-                  </div>
-
-                  {/* Financial Details & Actions */}
-                  <div className="flex items-center justify-between sm:justify-end gap-6 flex-shrink-0 pt-3 sm:pt-0 border-t sm:border-t-0 border-gray-100">
-                    <div className="text-left sm:text-right">
-                      <p className="text-[10px] text-[#455A45] uppercase font-bold">Artisan Earnings</p>
-                      <p className="text-lg font-black text-emerald-600">₹{order.artisanEarnings}</p>
-                      <p className="text-[10px] text-[#455A45]">Total: ₹{order.amount}</p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      {order.status === 'pending' && (
-                        <button
-                          type="button"
-                          onClick={() => handleStatusChange(order.id, 'fulfilled')}
-                          className="bg-[#2d6a4f] hover:bg-[#1b4332] text-white px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-xs active:scale-95"
-                        >
-                          Mark Fulfilled
-                        </button>
-                      )}
-                      {order.status === 'fulfilled' && (
-                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 px-3 py-1.5 rounded-xl border border-emerald-200">
-                          <Check className="w-3.5 h-3.5" /> Payout Settled
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
+          )
         )}
 
         {/* ======================================================== */}
@@ -711,10 +842,14 @@ export default function App() {
       {isAuthenticated && (
         <VoiceListingTrigger
           onClick={() => {
-            setIsVoiceModalOpen(false);
-            setVoiceListingOpen(true);
+            if (userRole === 'Buyer') {
+              setIsVoiceModalOpen(true);
+            } else {
+              setIsVoiceModalOpen(false);
+              setVoiceListingOpen(true);
+            }
           }}
-          isActive={voiceListingOpen}
+          isActive={userRole === 'Buyer' ? isVoiceModalOpen : voiceListingOpen}
           isInterviewInProgress={voiceListingOpen}
         />
       )}

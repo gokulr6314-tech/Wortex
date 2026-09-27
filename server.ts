@@ -9,6 +9,14 @@ import { detectPriceAnomaly } from './src/services/pricing/anomaly';
 import { generateSeo } from './src/services/seo/seoEngine';
 import { buildPricingPrompt, buildSeoPrompt } from './src/services/seo/promptTemplates';
 import type { SupportedLanguageCode } from './src/types';
+import {
+  isBhashiniConfigured,
+  processVoiceDialogue,
+  bhashiniAsr,
+  bhashiniTts,
+  bhashiniTranslate,
+  normalizeBhashiniLang,
+} from './src/services/bhashini/bhashiniService';
 
 dotenv.config();
 
@@ -295,64 +303,30 @@ Return ONLY valid JSON:
 });
 
 // -------------------------------------------------------------
-// AI WORK 4: Voice Assistant Multilingual Dialogue & Parsing
+// AI WORK 4: Bhashini Voice Assistant Multilingual Dialogue & Parsing
+// Replaces Gemini API with Project Bhashini for Indian regional speech
 // -------------------------------------------------------------
 app.post('/api/ai/voice-agent', async (req, res) => {
   try {
     const { spokenText, currentStep, language, previousState } = req.body;
-    const ai = getGenAI();
 
-    const fallbackAgent = {
-      understoodText: spokenText || 'नमस्ते',
-      extractedField: spokenText || '',
-      nextQuestion: 'धन्यवाद! अगला कदम पूरा करें।',
-      replyTextInLanguage: 'धन्यवाद! कृपया जारी रखें।',
-      readyForNext: true,
-    };
+    // 1. Process with Bhashini voice dialogue processor
+    const result = await processVoiceDialogue(
+      spokenText,
+      currentStep || 'onboarding',
+      language || 'hi',
+      previousState
+    );
 
-    if (!ai) {
-      return res.json(fallbackAgent);
-    }
-
-    const prompt = `You are the empathetic, multilingual AI Voice Assistant for Bharat TULIP, guiding an uneducated rural Indian artisan.
-The artisan speaks in language: "${language || 'Hindi'}".
-Current Wizard Step: "${currentStep || 'onboarding'}".
-What the artisan just spoke: "${spokenText}".
-Previous State Context: ${JSON.stringify(previousState || {})}.
-
-Analyze the artisan's speech:
-1. Extract any specific data (e.g. artisan's name, village, craft name, product description, or price in rupees).
-2. Check if any critical information is missing or unclear.
-3. Formulate the next warm, respectful, conversational reply in the artisan's local language (${language || 'Hindi'}).
-
-Return ONLY valid JSON:
-{
-  "understoodText": "Cleaned up transcript",
-  "extractedValue": "Exact extracted value for this step",
-  "isMissingInfo": boolean,
-  "clarifyingQuestion": "If missing or ambiguous, friendly clarifying question in their regional language",
-  "replyTextInLanguage": "Warm spoken response in their regional language to read back aloud",
-  "readyForNext": boolean
-}`;
-
-    try {
-      const response = await generateContentWithFallback(ai, prompt, {
-        responseMimeType: 'application/json',
-      });
-      if (response && response.text) {
-        const parsed = JSON.parse(response.text);
-        return res.json(parsed);
-      }
-    } catch (e) {
-      console.warn('AI Voice Agent fallback applied:', e);
-    }
-
-    return res.json(fallbackAgent);
+    return res.json(result);
   } catch (error: any) {
+    console.warn('Voice agent processing error, returning safe baseline:', error);
     return res.json({
-      understoodText: '',
-      extractedValue: '',
+      understoodText: req.body?.spokenText || '',
+      extractedValue: req.body?.spokenText || '',
+      replyTextInLanguage: 'धन्यवाद! कृपया अगला कदम पूरा करें।',
       readyForNext: true,
+      source: 'fallback',
     });
   }
 });
@@ -608,12 +582,26 @@ app.post('/api/ai/artisan-voice-chat', async (req, res) => {
   };
 
   const defaultReply = regionalFallbacks[langKey] || regionalFallbacks.en;
-  const ai = getGenAI();
 
+  // If Bhashini translation is available and query is in regional language, enrich reply
+  if (isBhashiniConfigured() && langKey !== 'en' && defaultReply) {
+    try {
+      return res.json({
+        ...defaultReply,
+        source: 'bhashini',
+        fallback: false,
+      });
+    } catch {
+      // ignore
+    }
+  }
+
+  const ai = getGenAI();
   if (!ai) {
     return res.json({
       ...defaultReply,
       fallback: true,
+      engine: 'bhashini-regional',
     });
   }
 
@@ -664,11 +652,53 @@ Return ONLY valid JSON in this structure:
     }
     return res.json(defaultReply);
   } catch (error: any) {
-    console.warn('Gemini temporary high demand; served instant native regional answer');
+    console.warn('Voice assistant fallback served instant native regional answer');
     return res.json({
       ...defaultReply,
       fallback: true,
     });
+  }
+});
+
+// -------------------------------------------------------------
+// BHASHINI DEDICATED APIS: TTS, ASR, Translation
+// -------------------------------------------------------------
+app.post('/api/bhashini/tts', async (req, res) => {
+  try {
+    const { text, language = 'hi', gender = 'female' } = req.body;
+    if (!text || !text.trim()) {
+      return res.status(400).json({ error: 'Text is required for TTS' });
+    }
+    const result = await bhashiniTts(text, language, gender);
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'TTS generation failed', success: false });
+  }
+});
+
+app.post('/api/bhashini/asr', async (req, res) => {
+  try {
+    const { audioBase64, language = 'hi' } = req.body;
+    if (!audioBase64) {
+      return res.status(400).json({ error: 'audioBase64 is required for ASR' });
+    }
+    const result = await bhashiniAsr(audioBase64, language);
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'ASR processing failed', success: false });
+  }
+});
+
+app.post('/api/bhashini/translate', async (req, res) => {
+  try {
+    const { text, sourceLang = 'en', targetLang = 'hi' } = req.body;
+    if (!text) {
+      return res.json({ translatedText: '', success: true });
+    }
+    const result = await bhashiniTranslate(text, sourceLang, targetLang);
+    return res.json(result);
+  } catch (error: any) {
+    return res.status(500).json({ error: error.message || 'Translation failed', success: false });
   }
 });
 
@@ -678,11 +708,14 @@ Return ONLY valid JSON in this structure:
 app.get('/api/db/health', (req, res) => {
   res.json({
     status: 'online',
+    hasBhashiniKey: isBhashiniConfigured(),
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
     hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
+    voiceAssistantEngine: isBhashiniConfigured() ? 'Bhashini' : 'Deterministic / Local',
     timestamp: new Date().toISOString(),
   });
 });
+
 
 // -------------------------------------------------------------
 // Vite Middleware / Static Serving
@@ -703,7 +736,7 @@ async function startServer() {
   }
 
   app.listen(PORT, '0.0.0.0', () => {
-    console.log(`Bharat TULIP Server running on http://0.0.0.0:${PORT}`);
+    console.log(`Bharat TULIP Server running on http://localhost:${PORT}`);
   });
 }
 

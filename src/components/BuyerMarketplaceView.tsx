@@ -68,6 +68,16 @@ export const BuyerMarketplaceView: React.FC<BuyerMarketplaceViewProps> = ({
   const [buyerAddress, setBuyerAddress] = useState('Flat 402, Green Glen Layout, Bellandur, Bengaluru 560103');
   const [paymentMode, setPaymentMode] = useState('UPI');
   const [orderSuccessAlert, setOrderSuccessAlert] = useState<string | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<'all' | 'terracotta' | 'silk' | 'bamboo' | 'in_stock'>('all');
+
+  const filteredProducts = products.filter((p) => {
+    if (categoryFilter === 'all') return true;
+    if (categoryFilter === 'terracotta') return p.title.toLowerCase().includes('terracotta') || p.craftTechnique.toLowerCase().includes('clay') || p.artisanCraft.toLowerCase().includes('pottery') || p.materials.some(m => m.toLowerCase().includes('clay'));
+    if (categoryFilter === 'silk') return p.title.toLowerCase().includes('silk') || p.materials.some(m => m.toLowerCase().includes('silk'));
+    if (categoryFilter === 'bamboo') return p.title.toLowerCase().includes('mat') || p.title.toLowerCase().includes('bamboo') || p.materials.some(m => m.toLowerCase().includes('bamboo') || m.toLowerCase().includes('cane') || m.toLowerCase().includes('fiber'));
+    if (categoryFilter === 'in_stock') return p.stockQuantity > 0;
+    return true;
+  });
 
   const handleBuyClick = (product: ProductListing) => {
     setSelectedProduct(product);
@@ -145,9 +155,44 @@ export const BuyerMarketplaceView: React.FC<BuyerMarketplaceViewProps> = ({
         )}
       </div>
 
+      {/* Category Filter Pills & Results Header */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pt-2">
+        <div>
+          <h3 className="text-lg font-extrabold text-[#1b4332] tracking-tight">
+            Marketplace Products ({filteredProducts.length})
+          </h3>
+          <p className="text-xs text-[#455A45]">
+            100% genuine artisan-crafted products currently available for direct purchase.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-1.5 bg-[#E1EBE1] p-1 rounded-2xl border border-white/60 shadow-inner overflow-x-auto">
+          {([
+            { id: 'all', label: `All (${products.length})` },
+            { id: 'terracotta', label: 'Terracotta' },
+            { id: 'silk', label: 'Silk Textiles' },
+            { id: 'bamboo', label: 'Woven Crafts' },
+            { id: 'in_stock', label: 'In Stock' },
+          ] as const).map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              onClick={() => setCategoryFilter(tab.id)}
+              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap cursor-pointer ${
+                categoryFilter === tab.id
+                  ? 'bg-[#1b4332] text-white shadow-xs'
+                  : 'text-[#455A45] hover:bg-white/40'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Product Catalog Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
-        {products.map((product) => {
+        {filteredProducts.map((product) => {
           const c = copyFor(product);
           return (
           <div
