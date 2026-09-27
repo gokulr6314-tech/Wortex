@@ -88,7 +88,7 @@ export default function App() {
   const [userRole, setUserRole] = useState<'Buyer' | 'Seller'>('Seller');
 
   // App Data State (Synced from DatabaseStore / mockData)
-  const [artisan, setArtisan] = useState<ArtisanProfile>(INITIAL_ARTISAN);
+  const [artisan, setArtisan] = useState<ArtisanProfile>(() => DatabaseStore.getArtisan());
   const [products, setProducts] = useState<ProductListing[]>(() => {
     const saved = DatabaseStore.getProducts();
     return saved.length > 0 ? saved : INITIAL_PRODUCTS;
@@ -101,6 +101,18 @@ export default function App() {
     const saved = DatabaseStore.getAnalytics();
     return saved || INITIAL_ANALYTICS;
   });
+
+  // Sync latest records from Supabase on app mount
+  useEffect(() => {
+    DatabaseStore.syncFromSupabase().then(({ artisan: remoteArtisan, products: remoteProducts }) => {
+      if (remoteArtisan) {
+        setArtisan(remoteArtisan);
+      }
+      if (remoteProducts && remoteProducts.length > 0) {
+        setProducts(remoteProducts);
+      }
+    });
+  }, []);
 
   // Highlight newly voice-catalogued item
   const [newlyCataloguedId, setNewlyCataloguedId] = useState<string | null>(null);
@@ -125,11 +137,14 @@ export default function App() {
       setActiveTab('catalogue');
     }
     if (session.identifier) {
-      setArtisan((prev) => ({
-        ...prev,
-        name: session.identifier,
-        village: session.address || prev.village,
-      }));
+      const current = DatabaseStore.getArtisan();
+      const updated: ArtisanProfile = {
+        ...current,
+        name: session.identifier.trim(),
+        village: session.address ? session.address.trim() : current.village,
+      };
+      setArtisan(updated);
+      DatabaseStore.saveArtisan(updated);
     }
   };
 

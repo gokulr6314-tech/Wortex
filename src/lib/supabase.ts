@@ -153,25 +153,120 @@ export class DatabaseStore {
     return artisan;
   }
 
-  static saveArtisan(profile: ArtisanProfile): void {
+  static async saveArtisan(profile: ArtisanProfile): Promise<void> {
     this.setStoredItem(STORAGE_KEYS.ARTISANS, profile);
     if (supabase) {
-      Promise.resolve(supabase.from('artisans').upsert({
-        id: profile.id,
-        name: profile.name,
-        phone: profile.phone,
-        village: profile.village,
-        state: profile.state,
-        craft_type: profile.craftType,
-        experience_years: profile.experienceYears,
-        language: profile.language,
-        avatar_url: profile.avatarUrl,
-        total_earnings: profile.totalEarnings,
-        active_listings_count: profile.activeListingsCount,
-        total_orders_count: profile.totalOrdersCount,
-        rating: profile.rating,
-        verified: profile.verified,
-      })).catch(console.error);
+      try {
+        const { error } = await supabase.from('artisans').upsert({
+          id: profile.id,
+          name: profile.name,
+          phone: profile.phone,
+          village: profile.village,
+          state: profile.state,
+          craft_type: profile.craftType,
+          experience_years: profile.experienceYears,
+          language: profile.language,
+          avatar_url: profile.avatarUrl,
+          total_earnings: profile.totalEarnings,
+          active_listings_count: profile.activeListingsCount,
+          total_orders_count: profile.totalOrdersCount,
+          rating: profile.rating,
+          verified: profile.verified,
+        });
+        if (error) {
+          console.error('[Supabase] Error saving artisan:', error);
+        } else {
+          console.log('[Supabase] Successfully saved artisan:', profile.name);
+        }
+      } catch (err) {
+        console.error('[Supabase] Exception in saveArtisan:', err);
+      }
+    }
+  }
+
+  static async syncFromSupabase(): Promise<{
+    artisan?: ArtisanProfile;
+    products?: ProductListing[];
+  }> {
+    if (!supabase) return {};
+    try {
+      const { data: artisanRows, error: artisanErr } = await supabase
+        .from('artisans')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      let fetchedArtisan: ArtisanProfile | undefined;
+      if (!artisanErr && artisanRows && artisanRows.length > 0) {
+        const row = artisanRows[0];
+        fetchedArtisan = {
+          id: row.id,
+          name: row.name,
+          phone: row.phone || '+91 98765 43210',
+          village: row.village || 'Naurangabad, Gorakhpur',
+          state: row.state || 'Uttar Pradesh',
+          craftType: row.craft_type || 'Traditional Handicrafts',
+          experienceYears: row.experience_years || 1,
+          language: (row.language as any) || 'en',
+          avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+          totalEarnings: Number(row.total_earnings) || 0,
+          activeListingsCount: Number(row.active_listings_count) || 0,
+          totalOrdersCount: Number(row.total_orders_count) || 0,
+          rating: Number(row.rating) || 5.0,
+          verified: Boolean(row.verified),
+          createdAt: row.created_at,
+        };
+        this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
+      }
+
+      const { data: productRows, error: prodErr } = await supabase
+        .from('products')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      let fetchedProducts: ProductListing[] | undefined;
+      if (!prodErr && productRows && productRows.length > 0) {
+        fetchedProducts = productRows.map((p) => ({
+          id: p.id,
+          artisanId: p.artisan_id,
+          artisanName: p.artisan_name,
+          artisanCraft: p.artisan_craft,
+          artisanVillage: p.artisan_village,
+          artisanState: p.artisan_state,
+          originalLanguage: p.original_language,
+          rawVoiceTranscript: p.raw_voice_transcript,
+          rawPhotoUrl: p.raw_photo_url,
+          studioPhotoUrl: p.studio_photo_url,
+          imageEnhanced: p.image_enhanced,
+          title: p.title,
+          seoTitle: p.seo_title,
+          description: p.description,
+          culturalStory: p.cultural_story,
+          craftTechnique: p.craft_technique,
+          materials: Array.isArray(p.materials) ? p.materials : [],
+          dimensions: p.dimensions,
+          careInstructions: p.care_instructions,
+          tags: Array.isArray(p.tags) ? p.tags : [],
+          giTagStatus: p.gi_tag_status,
+          artisanPrice: Number(p.artisan_price),
+          suggestedMarketPrice: Number(p.suggested_market_price),
+          retailPrice: Number(p.retail_price),
+          estimatedMarginPercent: Number(p.estimated_margin_percent),
+          competitorAveragePrice: Number(p.competitor_average_price),
+          marketPriceBenchmark: p.market_price_benchmark || {},
+          stockQuantity: Number(p.stock_quantity),
+          status: p.status,
+          views: Number(p.views) || 0,
+          ordersCount: Number(p.orders_count) || 0,
+          createdAt: p.created_at,
+        }));
+        this.setStoredItem(STORAGE_KEYS.PRODUCTS, fetchedProducts);
+      }
+
+      return { artisan: fetchedArtisan, products: fetchedProducts };
+    } catch (e) {
+      console.warn('Sync from Supabase failed:', e);
+      return {};
     }
   }
 
