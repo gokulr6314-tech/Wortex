@@ -194,8 +194,8 @@ function openerOnly(description: string): string {
   return firstLine.slice(0, 200);
 }
 
-export function inferCraftCategory(productName: string, transcript = ''): string {
-  const haystack = `${productName} ${transcript}`.toLowerCase();
+export function inferCraftCategory(productName?: string, transcript = ''): string {
+  const haystack = `${productName || ''} ${transcript || ''}`.toLowerCase();
   const map: [string, string][] = [
     ['terracotta', 'Terracotta'],
     ['pottery', 'Terracotta'],

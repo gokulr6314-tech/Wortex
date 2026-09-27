@@ -160,11 +160,11 @@ export const CRAFT_COST_PROFILES: CraftCostProfile[] = [
 
 export function resolveCraftProfile(craftCategory: string): CraftCostProfile {
   const normalized = (craftCategory || '').toLowerCase();
-  const exact = CRAFT_COST_PROFILES.find((p) => p.category.toLowerCase() === normalized);
+  const exact = CRAFT_COST_PROFILES.find((p) => (p.category || '').toLowerCase() === normalized);
   if (exact) return exact;
 
   const matched = CRAFT_COST_PROFILES.find((p) => {
-    const categoryKey = p.category.toLowerCase();
+    const categoryKey = (p.category || '').toLowerCase();
     return categoryKey.split(' ').some((word) => normalized.includes(word));
   });
   return matched || CRAFT_COST_PROFILES.find((p) => p.category === 'Handicraft')!;

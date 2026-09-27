@@ -25,8 +25,8 @@ function firstThreeMaterial(materials: string[]): string {
   return list.slice(0, 2).join(' and ') || list[0];
 }
 
-function guessColorFromCategory(category: string): string {
-  const c = category.toLowerCase();
+function guessColorFromCategory(category?: string | null): string {
+  const c = (category || '').toLowerCase();
   if (c.includes('terracotta') || c.includes('clay') || c.includes('pottery')) return 'earthy terracotta-red';
   if (c.includes('silk') || c.includes('handloom') || c.includes('weave')) return 'rich hand-dyed';
   if (c.includes('brass')) return 'warm polished gold';

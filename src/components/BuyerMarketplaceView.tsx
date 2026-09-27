@@ -70,12 +70,41 @@ export const BuyerMarketplaceView: React.FC<BuyerMarketplaceViewProps> = ({
   const [orderSuccessAlert, setOrderSuccessAlert] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'terracotta' | 'silk' | 'bamboo' | 'in_stock'>('all');
 
-  const filteredProducts = products.filter((p) => {
+  const filteredProducts = (products || []).filter((p) => {
+    if (!p) return false;
     if (categoryFilter === 'all') return true;
-    if (categoryFilter === 'terracotta') return p.title.toLowerCase().includes('terracotta') || p.craftTechnique.toLowerCase().includes('clay') || p.artisanCraft.toLowerCase().includes('pottery') || p.materials.some(m => m.toLowerCase().includes('clay'));
-    if (categoryFilter === 'silk') return p.title.toLowerCase().includes('silk') || p.materials.some(m => m.toLowerCase().includes('silk'));
-    if (categoryFilter === 'bamboo') return p.title.toLowerCase().includes('mat') || p.title.toLowerCase().includes('bamboo') || p.materials.some(m => m.toLowerCase().includes('bamboo') || m.toLowerCase().includes('cane') || m.toLowerCase().includes('fiber'));
-    if (categoryFilter === 'in_stock') return p.stockQuantity > 0;
+    const title = (p.title || '').toLowerCase();
+    const technique = (p.craftTechnique || '').toLowerCase();
+    const artisanCraft = (p.artisanCraft || '').toLowerCase();
+    const mats = Array.isArray(p.materials) ? p.materials : [];
+
+    if (categoryFilter === 'terracotta') {
+      return (
+        title.includes('terracotta') ||
+        technique.includes('clay') ||
+        artisanCraft.includes('pottery') ||
+        mats.some((m) => String(m || '').toLowerCase().includes('clay'))
+      );
+    }
+    if (categoryFilter === 'silk') {
+      return (
+        title.includes('silk') ||
+        mats.some((m) => String(m || '').toLowerCase().includes('silk'))
+      );
+    }
+    if (categoryFilter === 'bamboo') {
+      return (
+        title.includes('mat') ||
+        title.includes('bamboo') ||
+        mats.some(
+          (m) =>
+            String(m || '').toLowerCase().includes('bamboo') ||
+            String(m || '').toLowerCase().includes('cane') ||
+            String(m || '').toLowerCase().includes('fiber')
+        )
+      );
+    }
+    if (categoryFilter === 'in_stock') return Number(p.stockQuantity || 0) > 0;
     return true;
   });
 
