@@ -2,13 +2,22 @@ import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ArtisanProfile, Order, ProductListing, AnalyticsMetrics } from '../types';
 import { INITIAL_ARTISAN, INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_ANALYTICS } from './mockData';
 
-// Check if credentials exist in Vite or process.env
-const supabaseUrl = (typeof process !== 'undefined' && process.env?.SUPABASE_URL) ||
+const DEFAULT_SUPABASE_URL = 'https://etfyipqxfkigozryosrc.supabase.co';
+const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_8FvPjZhFDoIJ-mUnSVm6fA_TWrn0Vae';
+
+// Check if credentials exist in Vite or process.env, with automatic project fallback
+const supabaseUrl =
   (import.meta as any).env?.VITE_SUPABASE_URL ||
-  '';
-const supabaseAnonKey = (typeof process !== 'undefined' && process.env?.SUPABASE_ANON_KEY) ||
+  (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_URL ||
+  (typeof process !== 'undefined' && (process.env?.SUPABASE_URL || process.env?.NEXT_PUBLIC_SUPABASE_URL || process.env?.VITE_SUPABASE_URL)) ||
+  DEFAULT_SUPABASE_URL;
+
+const supabaseAnonKey =
   (import.meta as any).env?.VITE_SUPABASE_ANON_KEY ||
-  '';
+  (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  (import.meta as any).env?.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  (typeof process !== 'undefined' && (process.env?.SUPABASE_ANON_KEY || process.env?.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY || process.env?.VITE_SUPABASE_ANON_KEY)) ||
+  DEFAULT_SUPABASE_ANON_KEY;
 
 export const isSupabaseConfigured = Boolean(
   supabaseUrl &&
@@ -217,6 +226,11 @@ export class DatabaseStore {
           createdAt: row.created_at,
         };
         this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
+      } else if (!artisanErr && (!artisanRows || artisanRows.length === 0)) {
+        // Fresh database: seed default artisan immediately so foreign keys work
+        const defaultArtisan = this.getArtisan();
+        await this.saveArtisan(defaultArtisan);
+        fetchedArtisan = defaultArtisan;
       }
 
       const { data: productRows, error: prodErr } = await supabase
@@ -286,37 +300,63 @@ export class DatabaseStore {
     this.saveArtisan(artisan);
 
     if (supabase) {
-      Promise.resolve(supabase.from('products').insert({
-        id: product.id,
-        artisan_id: product.artisanId,
-        artisan_name: product.artisanName,
-        artisan_craft: product.artisanCraft,
-        artisan_village: product.artisanVillage,
-        artisan_state: product.artisanState,
-        original_language: product.originalLanguage,
-        raw_voice_transcript: product.rawVoiceTranscript,
-        raw_photo_url: product.rawPhotoUrl,
-        studio_photo_url: product.studioPhotoUrl,
-        image_enhanced: product.imageEnhanced,
-        title: product.title,
-        seo_title: product.seoTitle,
-        description: product.description,
-        cultural_story: product.culturalStory,
-        craft_technique: product.craftTechnique,
-        materials: product.materials,
-        dimensions: product.dimensions,
-        care_instructions: product.careInstructions,
-        tags: product.tags,
-        gi_tag_status: product.giTagStatus,
-        artisan_price: product.artisanPrice,
-        suggested_market_price: product.suggestedMarketPrice,
-        retail_price: product.retailPrice,
-        estimated_margin_percent: product.estimatedMarginPercent,
-        competitor_average_price: product.competitorAveragePrice,
-        market_price_benchmark: product.marketPriceBenchmark,
-        stock_quantity: product.stockQuantity,
-        status: product.status,
-      })).catch(console.error);
+      (async () => {
+        try {
+          // 1. Ensure artisan exists in Supabase to satisfy foreign key constraint!
+          const targetArtisanId = product.artisanId || artisan.id || 'artisan_001';
+          await supabase.from('artisans').upsert({
+            id: targetArtisanId,
+            name: product.artisanName || artisan.name || 'Artisan',
+            phone: artisan.phone || '+91 98765 43210',
+            village: product.artisanVillage || artisan.village || 'Naurangabad, Gorakhpur',
+            state: product.artisanState || artisan.state || 'Uttar Pradesh',
+            craft_type: product.artisanCraft || artisan.craftType || 'Traditional Craft',
+            experience_years: artisan.experienceYears || 5,
+            language: artisan.language || 'hi',
+          });
+
+          // 2. Insert/Upsert the product
+          const { error: prodErr } = await supabase.from('products').upsert({
+            id: product.id,
+            artisan_id: targetArtisanId,
+            artisan_name: product.artisanName,
+            artisan_craft: product.artisanCraft,
+            artisan_village: product.artisanVillage,
+            artisan_state: product.artisanState,
+            original_language: product.originalLanguage,
+            raw_voice_transcript: product.rawVoiceTranscript,
+            raw_photo_url: product.rawPhotoUrl,
+            studio_photo_url: product.studioPhotoUrl,
+            image_enhanced: product.imageEnhanced,
+            title: product.title,
+            seo_title: product.seoTitle,
+            description: product.description,
+            cultural_story: product.culturalStory,
+            craft_technique: product.craftTechnique,
+            materials: product.materials,
+            dimensions: product.dimensions,
+            care_instructions: product.careInstructions,
+            tags: product.tags,
+            gi_tag_status: product.giTagStatus,
+            artisan_price: product.artisanPrice,
+            suggested_market_price: product.suggestedMarketPrice,
+            retail_price: product.retailPrice,
+            estimated_margin_percent: product.estimatedMarginPercent,
+            competitor_average_price: product.competitorAveragePrice,
+            market_price_benchmark: product.marketPriceBenchmark,
+            stock_quantity: product.stockQuantity,
+            status: product.status,
+          });
+
+          if (prodErr) {
+            console.error('[Supabase] Error saving product:', prodErr);
+          } else {
+            console.log('[Supabase] Successfully saved product:', product.title);
+          }
+        } catch (err) {
+          console.error('[Supabase] Exception in addProduct:', err);
+        }
+      })();
     }
 
     return updated;
@@ -370,24 +410,48 @@ export class DatabaseStore {
     this.saveArtisan(artisan);
 
     if (supabase) {
-      Promise.resolve(supabase.from('orders').insert({
-        id: order.id,
-        order_number: order.orderNumber,
-        product_id: order.productId,
-        product_title: order.productTitle,
-        product_image_url: order.productImageUrl,
-        artisan_id: order.artisanId,
-        artisan_name: order.artisanName,
-        buyer_name: order.buyerName,
-        buyer_city: order.buyerCity,
-        buyer_state: order.buyerState,
-        amount: order.amount,
-        artisan_earnings: order.artisanEarnings,
-        platform_fee: order.platformFee,
-        status: order.status,
-        shipping_address: order.shippingAddress,
-        payment_method: order.paymentMethod,
-      })).catch(console.error);
+      (async () => {
+        try {
+          const targetArtisanId = order.artisanId || artisan.id || 'artisan_001';
+          await supabase.from('artisans').upsert({
+            id: targetArtisanId,
+            name: order.artisanName || artisan.name || 'Artisan',
+            phone: artisan.phone || '+91 98765 43210',
+            village: artisan.village || 'Naurangabad, Gorakhpur',
+            state: artisan.state || 'Uttar Pradesh',
+            craft_type: artisan.craftType || 'Traditional Craft',
+            experience_years: artisan.experienceYears || 5,
+            language: artisan.language || 'hi',
+          });
+
+          const { error: orderErr } = await supabase.from('orders').upsert({
+            id: order.id,
+            order_number: order.orderNumber,
+            product_id: order.productId,
+            product_title: order.productTitle,
+            product_image_url: order.productImageUrl,
+            artisan_id: targetArtisanId,
+            artisan_name: order.artisanName,
+            buyer_name: order.buyerName,
+            buyer_city: order.buyerCity,
+            buyer_state: order.buyerState,
+            amount: order.amount,
+            artisan_earnings: order.artisanEarnings,
+            platform_fee: order.platformFee,
+            status: order.status,
+            shipping_address: order.shippingAddress,
+            payment_method: order.paymentMethod,
+          });
+
+          if (orderErr) {
+            console.error('[Supabase] Error saving order:', orderErr);
+          } else {
+            console.log('[Supabase] Successfully saved order:', order.orderNumber);
+          }
+        } catch (err) {
+          console.error('[Supabase] Exception in addOrder:', err);
+        }
+      })();
     }
 
     return updated;
