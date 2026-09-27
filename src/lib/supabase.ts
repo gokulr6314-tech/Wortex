@@ -164,6 +164,26 @@ export class DatabaseStore {
 
   static async saveArtisan(profile: ArtisanProfile): Promise<void> {
     this.setStoredItem(STORAGE_KEYS.ARTISANS, profile);
+    
+    // STEP 7: Mobile App -> Backend API -> Supabase
+    try {
+      const res = await fetch('/api/artisans', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(profile),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        console.error('[API Client] Backend error saving artisan:', data.error || data);
+      } else {
+        console.log('[API Client] Confirmed artisan saved via Backend API to Supabase:', data.data?.name);
+        return;
+      }
+    } catch (apiErr) {
+      console.warn('[API Client] Backend API unreachable, trying direct Supabase fallback:', apiErr);
+    }
+
+    // Direct Supabase fallback (for offline or edge cases)
     if (supabase) {
       try {
         const { error } = await supabase.from('artisans').upsert({
@@ -183,12 +203,12 @@ export class DatabaseStore {
           verified: profile.verified,
         });
         if (error) {
-          console.error('[Supabase] Error saving artisan:', error);
+          console.error('[Supabase Direct] Error saving artisan:', error);
         } else {
-          console.log('[Supabase] Successfully saved artisan:', profile.name);
+          console.log('[Supabase Direct] Successfully saved artisan:', profile.name);
         }
       } catch (err) {
-        console.error('[Supabase] Exception in saveArtisan:', err);
+        console.error('[Supabase Direct] Exception in saveArtisan:', err);
       }
     }
   }
@@ -197,6 +217,84 @@ export class DatabaseStore {
     artisan?: ArtisanProfile;
     products?: ProductListing[];
   }> {
+    // 1. Try fetching through Backend API first
+    try {
+      const [artisanRes, productsRes] = await Promise.allSettled([
+        fetch('/api/artisans').then((r) => r.json()),
+        fetch('/api/products').then((r) => r.json()),
+      ]);
+
+      let fetchedArtisan: ArtisanProfile | undefined;
+      let fetchedProducts: ProductListing[] | undefined;
+
+      if (artisanRes.status === 'fulfilled' && artisanRes.value?.success && artisanRes.value.data?.length > 0) {
+        const row = artisanRes.value.data[0];
+        fetchedArtisan = {
+          id: row.id,
+          name: row.name,
+          phone: row.phone || '+91 98765 43210',
+          village: row.village || 'Naurangabad, Gorakhpur',
+          state: row.state || 'Uttar Pradesh',
+          craftType: row.craft_type || 'Traditional Handicrafts',
+          experienceYears: row.experience_years || 1,
+          language: (row.language as any) || 'en',
+          avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+          totalEarnings: Number(row.total_earnings) || 0,
+          activeListingsCount: Number(row.active_listings_count) || 0,
+          totalOrdersCount: Number(row.total_orders_count) || 0,
+          rating: Number(row.rating) || 5.0,
+          verified: Boolean(row.verified),
+          createdAt: row.created_at,
+        };
+        this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
+      }
+
+      if (productsRes.status === 'fulfilled' && productsRes.value?.success && productsRes.value.data?.length > 0) {
+        fetchedProducts = productsRes.value.data.map((p: any) => ({
+          id: p.id,
+          artisanId: p.artisan_id,
+          artisanName: p.artisan_name,
+          artisanCraft: p.artisan_craft,
+          artisanVillage: p.artisan_village,
+          artisanState: p.artisan_state,
+          originalLanguage: p.original_language,
+          rawVoiceTranscript: p.raw_voice_transcript,
+          rawPhotoUrl: p.raw_photo_url,
+          studioPhotoUrl: p.studio_photo_url,
+          imageEnhanced: p.image_enhanced,
+          title: p.title,
+          seoTitle: p.seo_title,
+          description: p.description,
+          culturalStory: p.cultural_story,
+          craftTechnique: p.craft_technique,
+          materials: Array.isArray(p.materials) ? p.materials : [],
+          dimensions: p.dimensions,
+          careInstructions: p.care_instructions,
+          tags: Array.isArray(p.tags) ? p.tags : [],
+          giTagStatus: p.gi_tag_status,
+          artisanPrice: Number(p.artisan_price),
+          suggestedMarketPrice: Number(p.suggested_market_price),
+          retailPrice: Number(p.retail_price),
+          estimatedMarginPercent: Number(p.estimated_margin_percent),
+          competitorAveragePrice: Number(p.competitor_average_price),
+          marketPriceBenchmark: p.market_price_benchmark || {},
+          stockQuantity: Number(p.stock_quantity),
+          status: p.status,
+          views: Number(p.views) || 0,
+          ordersCount: Number(p.orders_count) || 0,
+          createdAt: p.created_at,
+        }));
+        this.setStoredItem(STORAGE_KEYS.PRODUCTS, fetchedProducts);
+      }
+
+      if (fetchedArtisan || fetchedProducts) {
+        return { artisan: fetchedArtisan, products: fetchedProducts };
+      }
+    } catch (e) {
+      console.warn('[API Client] Backend sync error, falling back to direct Supabase:', e);
+    }
+
+    // 2. Direct Supabase Fallback
     if (!supabase) return {};
     try {
       const { data: artisanRows, error: artisanErr } = await supabase
@@ -227,7 +325,6 @@ export class DatabaseStore {
         };
         this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
       } else if (!artisanErr && (!artisanRows || artisanRows.length === 0)) {
-        // Fresh database: seed default artisan immediately so foreign keys work
         const defaultArtisan = this.getArtisan();
         await this.saveArtisan(defaultArtisan);
         fetchedArtisan = defaultArtisan;
@@ -299,10 +396,28 @@ export class DatabaseStore {
     artisan.activeListingsCount = updated.length;
     this.saveArtisan(artisan);
 
-    if (supabase) {
-      (async () => {
+    // STEP 6: Mobile App -> Backend API -> Supabase
+    (async () => {
+      try {
+        const res = await fetch('/api/products', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(product),
+        });
+        const result = await res.json();
+        if (!res.ok || !result.success) {
+          console.error('[API Client] Backend error saving product:', result.error || result);
+        } else {
+          console.log('[API Client] Confirmed product saved via Backend API to Supabase:', result.data?.title);
+          return;
+        }
+      } catch (apiErr) {
+        console.warn('[API Client] Backend API unreachable for addProduct, trying direct Supabase fallback:', apiErr);
+      }
+
+      // Direct Supabase fallback
+      if (supabase) {
         try {
-          // 1. Ensure artisan exists in Supabase to satisfy foreign key constraint!
           const targetArtisanId = product.artisanId || artisan.id || 'artisan_001';
           await supabase.from('artisans').upsert({
             id: targetArtisanId,
@@ -315,7 +430,6 @@ export class DatabaseStore {
             language: artisan.language || 'hi',
           });
 
-          // 2. Insert/Upsert the product
           const { error: prodErr } = await supabase.from('products').upsert({
             id: product.id,
             artisan_id: targetArtisanId,
@@ -349,15 +463,15 @@ export class DatabaseStore {
           });
 
           if (prodErr) {
-            console.error('[Supabase] Error saving product:', prodErr);
+            console.error('[Supabase Direct] Error saving product:', prodErr);
           } else {
-            console.log('[Supabase] Successfully saved product:', product.title);
+            console.log('[Supabase Direct] Successfully saved product:', product.title);
           }
         } catch (err) {
-          console.error('[Supabase] Exception in addProduct:', err);
+          console.error('[Supabase Direct] Exception in addProduct:', err);
         }
-      })();
-    }
+      }
+    })();
 
     return updated;
   }

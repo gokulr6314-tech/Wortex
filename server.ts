@@ -2,6 +2,7 @@ import express from 'express';
 import path from 'path';
 import { GoogleGenAI, Type } from '@google/genai';
 import dotenv from 'dotenv';
+import { createClient, SupabaseClient } from '@supabase/supabase-js';
 // Module 4 & 5 — deterministic pricing + SEO engines reused server-side
 import { analyzeMarketPricing } from './src/services/pricing/marketPricing';
 import { detectPriceAnomaly } from './src/services/pricing/anomaly';
@@ -22,7 +23,28 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000;
 
-app.use(express.json({ limit: '15mb' }));
+app.use(express.json({ limit: '25mb' }));
+
+// Supabase Server Client Initialization
+const SUPABASE_DEFAULT_URL = 'https://etfyipqxfkigozryosrc.supabase.co';
+const SUPABASE_DEFAULT_KEY = 'sb_publishable_8FvPjZhFDoIJ-mUnSVm6fA_TWrn0Vae';
+
+const supabaseServerUrl =
+  process.env.SUPABASE_URL ||
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  process.env.VITE_SUPABASE_URL ||
+  SUPABASE_DEFAULT_URL;
+
+const supabaseServerKey =
+  process.env.SUPABASE_SERVICE_ROLE_KEY ||
+  process.env.SUPABASE_ANON_KEY ||
+  process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ||
+  process.env.VITE_SUPABASE_ANON_KEY ||
+  SUPABASE_DEFAULT_KEY;
+
+const supabaseServer: SupabaseClient = createClient(supabaseServerUrl, supabaseServerKey);
+
+console.log(`[BACKEND INIT] Supabase connected to: ${supabaseServerUrl}`);
 
 // Lazy initialization for Google GenAI
 let aiClient: GoogleGenAI | null = null;
@@ -704,15 +726,419 @@ app.post('/api/bhashini/translate', async (req, res) => {
 // -------------------------------------------------------------
 // Database Health & System Info
 // -------------------------------------------------------------
-app.get('/api/db/health', (req, res) => {
+app.get('/api/db/health', async (req, res) => {
+  let dbConnected = false;
+  let artisanCount = 0;
+  let productCount = 0;
+
+  try {
+    const { count: aCount, error: aErr } = await supabaseServer.from('artisans').select('*', { count: 'exact', head: true });
+    const { count: pCount, error: pErr } = await supabaseServer.from('products').select('*', { count: 'exact', head: true });
+    if (!aErr && !pErr) {
+      dbConnected = true;
+      artisanCount = aCount || 0;
+      productCount = pCount || 0;
+    }
+  } catch (e) {
+    dbConnected = false;
+  }
+
   res.json({
     status: 'online',
+    database: dbConnected ? 'connected' : 'degraded',
+    artisanCount,
+    productCount,
     hasBhashiniKey: isBhashiniConfigured(),
     hasGeminiKey: Boolean(process.env.GEMINI_API_KEY),
-    hasSupabaseUrl: Boolean(process.env.SUPABASE_URL),
-    voiceAssistantEngine: isBhashiniConfigured() ? 'Bhashini' : 'Deterministic / Local',
+    hasSupabaseUrl: Boolean(supabaseServerUrl),
     timestamp: new Date().toISOString(),
   });
+});
+
+// -------------------------------------------------------------
+// STEP 7 & 4: USER / ARTISAN REGISTRATION BACKEND API
+// Flow: Mobile App -> POST /api/artisans -> Backend Maps Data -> Supabase 'artisans' Table
+// -------------------------------------------------------------
+const handleArtisanSave = async (req: express.Request, res: express.Response) => {
+  const body = req.body || {};
+  console.log('[BACKEND API] [POST /api/artisans] Received payload from mobile/web app:', JSON.stringify(body, null, 2));
+
+  try {
+    const artisanName = (body.name || body.artisanName || body.identifier || body.fullName || '').trim();
+    if (!artisanName) {
+      console.warn('[BACKEND API] [POST /api/artisans] Rejected: Name is missing');
+      return res.status(400).json({ success: false, error: 'Artisan/User name is required' });
+    }
+
+    const artisanId =
+      body.id ||
+      body.artisanId ||
+      body.artisan_id ||
+      `artisan_${Date.now().toString().slice(-6)}`;
+
+    // STEP 4: Map frontend fields to existing Supabase 'artisans' table columns
+    const dbArtisan = {
+      id: artisanId,
+      name: artisanName,
+      phone: body.phone || body.phoneNumber || body.mobile || null,
+      village: body.village || body.address || body.location || body.city || null,
+      state: body.state || 'Uttar Pradesh',
+      craft_type: body.craftType || body.craft_type || body.category || 'Traditional Handicrafts',
+      experience_years: Number(body.experienceYears || body.experience_years) || 1,
+      language: body.language || 'hi',
+      avatar_url: body.avatarUrl || body.avatar_url || body.photo || null,
+      total_earnings: Number(body.totalEarnings || body.total_earnings) || 0,
+      active_listings_count: Number(body.activeListingsCount || body.active_listings_count) || 0,
+      total_orders_count: Number(body.totalOrdersCount || body.total_orders_count) || 0,
+      rating: Number(body.rating) || 5.0,
+      verified: body.verified !== undefined ? Boolean(body.verified) : true,
+    };
+
+    console.log('[BACKEND API] [POST /api/artisans] Sending mapped record to Supabase table: artisans');
+
+    // STEP 5: Send INSERT/UPDATE request to Supabase
+    const { data, error } = await supabaseServer
+      .from('artisans')
+      .upsert(dbArtisan)
+      .select()
+      .single();
+
+    // STEP 10: Error handling - return real Supabase error if failed
+    if (error) {
+      console.error('[BACKEND API] [POST /api/artisans] Supabase ERROR:', error);
+      return res.status(400).json({
+        success: false,
+        table: 'artisans',
+        operation: 'upsert',
+        error: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+    }
+
+    console.log('[BACKEND API] [POST /api/artisans] Supabase CONFIRMED store:', data);
+    return res.status(200).json({
+      success: true,
+      message: 'Artisan stored successfully in Supabase',
+      data,
+    });
+  } catch (err: any) {
+    console.error('[BACKEND API] [POST /api/artisans] Exception:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+};
+
+app.post('/api/artisans', handleArtisanSave);
+app.post('/api/register', handleArtisanSave);
+
+app.get('/api/artisans', async (req, res) => {
+  try {
+    const { data, error } = await supabaseServer
+      .from('artisans')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[BACKEND API] [GET /api/artisans] Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/artisans/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { data, error } = await supabaseServer
+      .from('artisans')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+
+    if (error) {
+      console.error('[BACKEND API] [GET /api/artisans/:id] Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// STEP 6, 4, 5, 8: PRODUCT UPLOAD BACKEND API
+// Flow: Mobile App -> POST /api/products -> Backend Maps Data -> Supabase 'products' Table
+// -------------------------------------------------------------
+app.post('/api/products', async (req, res) => {
+  const body = req.body || {};
+  console.log('[BACKEND API] [POST /api/products] Received product payload from mobile/web app:', {
+    title: body.title || body.productName,
+    price: body.price || body.artisanPrice,
+    artisanId: body.artisanId || body.artisan_id || body.sellerId,
+    category: body.craftCategory || body.category,
+  });
+
+  try {
+    const title = (body.title || body.productName || body.name || '').trim();
+    if (!title) {
+      console.warn('[BACKEND API] [POST /api/products] Rejected: Product title/name is missing');
+      return res.status(400).json({ success: false, error: 'Product title / name is required' });
+    }
+
+    // STEP 8: Database relationships - link product to existing artisan/seller
+    const targetArtisanId =
+      body.artisanId ||
+      body.artisan_id ||
+      body.sellerId ||
+      body.seller_id ||
+      body.userId ||
+      body.user_id ||
+      'artisan_001';
+
+    const targetArtisanName =
+      body.artisanName ||
+      body.artisan_name ||
+      body.sellerName ||
+      body.seller_name ||
+      'Ramvati Devi';
+
+    // Verify artisan exists to satisfy PostgreSQL foreign key constraint (products.artisan_id -> artisans.id)
+    const { data: existingArtisan } = await supabaseServer
+      .from('artisans')
+      .select('id')
+      .eq('id', targetArtisanId)
+      .maybeSingle();
+
+    if (!existingArtisan) {
+      console.log(`[BACKEND API] Artisan ${targetArtisanId} not yet in DB. Provisioning parent artisan first...`);
+      const { error: artErr } = await supabaseServer.from('artisans').upsert({
+        id: targetArtisanId,
+        name: targetArtisanName,
+        phone: body.artisanPhone || body.phone || null,
+        village: body.artisanVillage || body.village || 'Gorakhpur',
+        state: body.artisanState || body.state || 'Uttar Pradesh',
+        craft_type: body.artisanCraft || body.craftCategory || body.category || 'Traditional Craft',
+        language: body.originalLanguage || body.language || 'hi',
+      });
+      if (artErr) {
+        console.error('[BACKEND API] Failed to auto-provision parent artisan:', artErr);
+      }
+    }
+
+    // STEP 4 & 5: Map ACTUAL user entered fields to existing Supabase 'products' columns
+    const artisanPrice = Number(body.artisanPrice || body.artisan_price || body.price) || 0;
+    const retailPrice = Number(body.retailPrice || body.retail_price) || Math.round(artisanPrice * 1.35) || artisanPrice;
+    const suggestedMarketPrice = Number(body.suggestedMarketPrice || body.suggested_market_price) || Math.round(artisanPrice * 1.5);
+    const competitorAveragePrice = Number(body.competitorAveragePrice || body.competitor_average_price) || Math.round(artisanPrice * 1.4);
+    const stockQuantity = Number(body.stockQuantity || body.stock_quantity || body.quantity) || 10;
+    const estimatedMarginPercent = Number(body.estimatedMarginPercent || body.estimated_margin_percent) || 80;
+
+    const rawPhoto = body.rawPhotoUrl || body.raw_photo_url || body.image || body.productImage || body.rawPhoto || '';
+    const studioPhoto = body.studioPhotoUrl || body.studio_photo_url || body.studioPhoto || rawPhoto;
+
+    const dbProduct = {
+      id: body.id || body.productId || body.product_id || `prod_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+      artisan_id: targetArtisanId,
+      artisan_name: targetArtisanName,
+      artisan_craft: body.artisanCraft || body.artisan_craft || body.craftCategory || body.category || 'Handicraft',
+      artisan_village: body.artisanVillage || body.artisan_village || body.village || 'Gorakhpur',
+      artisan_state: body.artisanState || body.artisan_state || body.state || 'Uttar Pradesh',
+      original_language: body.originalLanguage || body.original_language || body.language || 'hi',
+      raw_voice_transcript: body.rawVoiceTranscript || body.raw_voice_transcript || body.voiceNotes || null,
+      raw_photo_url: rawPhoto,
+      studio_photo_url: studioPhoto,
+      image_enhanced: body.imageEnhanced !== undefined ? Boolean(body.imageEnhanced) : Boolean(studioPhoto),
+      title: title,
+      seo_title: body.seoTitle || body.seo_title || body.metaTitle || title,
+      description: body.description || '',
+      cultural_story: body.culturalStory || body.cultural_story || '',
+      craft_technique: body.craftTechnique || body.craft_technique || body.technique || '',
+      materials: Array.isArray(body.materials) ? body.materials : typeof body.materials === 'string' ? [body.materials] : [],
+      dimensions: body.dimensions || 'Standard Dimensions',
+      care_instructions: body.careInstructions || body.care_instructions || 'Wipe gently with dry soft cloth',
+      tags: Array.isArray(body.tags) ? body.tags : typeof body.tags === 'string' ? [body.tags] : [],
+      gi_tag_status: body.giTagStatus || body.gi_tag_status || null,
+      artisan_price: artisanPrice,
+      suggested_market_price: suggestedMarketPrice,
+      retail_price: retailPrice,
+      estimated_margin_percent: estimatedMarginPercent,
+      competitor_average_price: competitorAveragePrice,
+      market_price_benchmark: body.marketPriceBenchmark || body.market_price_benchmark || {},
+      stock_quantity: stockQuantity,
+      status: body.status || 'published',
+      views: Number(body.views) || 0,
+      orders_count: Number(body.ordersCount || body.orders_count) || 0,
+      created_at: body.createdAt || body.created_at || new Date().toISOString(),
+    };
+
+    console.log('[BACKEND API] [POST /api/products] Sending mapped record to Supabase table: products');
+
+    // STEP 6: Execute Supabase insert/upsert
+    const { data, error } = await supabaseServer
+      .from('products')
+      .upsert(dbProduct)
+      .select()
+      .single();
+
+    // STEP 10: Real Supabase error handling
+    if (error) {
+      console.error('[BACKEND API] [POST /api/products] Supabase ERROR:', error);
+      return res.status(400).json({
+        success: false,
+        table: 'products',
+        operation: 'upsert',
+        error: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code,
+      });
+    }
+
+    console.log('[BACKEND API] [POST /api/products] Supabase CONFIRMED store:', data.title, `(${data.id})`);
+    return res.status(201).json({
+      success: true,
+      message: 'Product stored successfully in Supabase',
+      data,
+    });
+  } catch (err: any) {
+    console.error('[BACKEND API] [POST /api/products] Exception:', err);
+    return res.status(500).json({ success: false, error: err.message || 'Internal server error' });
+  }
+});
+
+app.get('/api/products', async (req, res) => {
+  try {
+    const { data, error } = await supabaseServer
+      .from('products')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('[BACKEND API] [GET /api/products] Supabase Error:', error);
+      return res.status(500).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.delete('/api/products/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { error } = await supabaseServer.from('products').delete().eq('id', id);
+    if (error) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, message: 'Product deleted' });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+// -------------------------------------------------------------
+// ORDERS BACKEND API
+// Flow: Mobile App -> POST /api/orders -> Backend Maps Data -> Supabase 'orders' Table
+// -------------------------------------------------------------
+app.post('/api/orders', async (req, res) => {
+  const body = req.body || {};
+  console.log('[BACKEND API] [POST /api/orders] Received order payload:', body);
+
+  try {
+    const targetArtisanId = body.artisanId || body.artisan_id || 'artisan_001';
+
+    // Ensure artisan exists for FK
+    const { data: existingArtisan } = await supabaseServer
+      .from('artisans')
+      .select('id')
+      .eq('id', targetArtisanId)
+      .maybeSingle();
+
+    if (!existingArtisan) {
+      await supabaseServer.from('artisans').upsert({
+        id: targetArtisanId,
+        name: body.artisanName || body.artisan_name || 'Artisan',
+        village: body.artisanVillage || body.village || 'Gorakhpur',
+        state: body.artisanState || body.state || 'Uttar Pradesh',
+        craft_type: 'Handicraft',
+      });
+    }
+
+    const dbOrder = {
+      id: body.id || body.orderId || `order_${Date.now()}`,
+      order_number: body.orderNumber || body.order_number || `ORD-${Date.now().toString().slice(-6)}`,
+      product_id: body.productId || body.product_id || null,
+      product_title: body.productTitle || body.product_title || 'Handcrafted Product',
+      product_image_url: body.productImageUrl || body.product_image_url || null,
+      artisan_id: targetArtisanId,
+      artisan_name: body.artisanName || body.artisan_name || 'Artisan',
+      buyer_name: body.buyerName || body.buyer_name || 'Valued Buyer',
+      buyer_city: body.buyerCity || body.buyer_city || 'New Delhi',
+      buyer_state: body.buyerState || body.buyer_state || 'Delhi',
+      amount: Number(body.amount) || 0,
+      artisan_earnings: Number(body.artisanEarnings || body.artisan_earnings) || Number(body.amount) || 0,
+      platform_fee: Number(body.platformFee || body.platform_fee) || 0,
+      status: body.status || 'pending',
+      shipping_address: body.shippingAddress || body.shipping_address || 'India',
+      payment_method: body.paymentMethod || body.payment_method || 'UPI',
+      created_at: body.createdAt || body.created_at || new Date().toISOString(),
+    };
+
+    const { data, error } = await supabaseServer
+      .from('orders')
+      .upsert(dbOrder)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('[BACKEND API] [POST /api/orders] Supabase ERROR:', error);
+      return res.status(400).json({ success: false, error: error.message, details: error.details, code: error.code });
+    }
+
+    console.log('[BACKEND API] [POST /api/orders] Supabase CONFIRMED store:', data.order_number);
+    return res.status(201).json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.get('/api/orders', async (req, res) => {
+  try {
+    const { data, error } = await supabaseServer
+      .from('orders')
+      .select('*')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      return res.status(500).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
+});
+
+app.patch('/api/orders/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body;
+    const { data, error } = await supabaseServer
+      .from('orders')
+      .update({ status })
+      .eq('id', id)
+      .select()
+      .single();
+
+    if (error) {
+      return res.status(400).json({ success: false, error: error.message });
+    }
+    return res.json({ success: true, data });
+  } catch (err: any) {
+    return res.status(500).json({ success: false, error: err.message });
+  }
 });
 
 
