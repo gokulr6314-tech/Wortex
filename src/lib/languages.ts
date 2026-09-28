@@ -178,6 +178,11 @@ export interface UiTranslations {
   tableProducts: string;
   tableOrders: string;
   schemaDetails: string;
+  // Dashboard extended labels
+  addNewProductBtn: string;
+  analyticsOverview: string;
+  inventoryStock: string;
+  artisanEarnings: string;
 }
 
 export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
@@ -251,6 +256,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'उत्पाद तालिका (products)',
     tableOrders: 'आर्डर तालिका (orders)',
     schemaDetails: 'डेटाबेस स्कीमा और रिकॉर्ड्स',
+    addNewProductBtn: 'नया उत्पाद जोड़ें',
+    analyticsOverview: 'विश्लेषण दृश्य',
+    inventoryStock: 'स्टॉक प्रबंधन',
+    artisanEarnings: 'कारीगर आय',
   },
   ta: {
     appTitle: 'பாரத் துலிப் கைவினைஞர் மையம்',
@@ -322,6 +331,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'தயாரிப்புகள் (products)',
     tableOrders: 'ஆர்டர்கள் (orders)',
     schemaDetails: 'தரவுத்தள திட்ட அமைப்பு',
+    addNewProductBtn: 'புதிய தயாரிப்பு சேர்க்கவும்',
+    analyticsOverview: 'பகுப்பாய்வு',
+    inventoryStock: 'சரக்கு மேலாண்மை',
+    artisanEarnings: 'கைவினைஞர் வருமானம்',
   },
   en: {
     appTitle: 'Bharat TULIP Artisan Voice Studio',
@@ -393,6 +406,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'Products Table',
     tableOrders: 'Orders Table',
     schemaDetails: 'Database Schema & Live Records',
+    addNewProductBtn: 'Add New Product',
+    analyticsOverview: 'Analytics Overview',
+    inventoryStock: 'Inventory & Stock',
+    artisanEarnings: 'Artisan Earnings',
   },
   te: {
     appTitle: 'భారత్ ట్యులిప్ చేతివృత్తుల వేదిక',
@@ -464,6 +481,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ఉత్పత్తులు (products)',
     tableOrders: 'ఆర్డర్లు (orders)',
     schemaDetails: 'డేటాబేస్ స్కీమా రికార్డులు',
+    addNewProductBtn: 'కొత్త ఉత్పత్తి జోడించండి',
+    analyticsOverview: 'విశ్లేషణ అవలోకనం',
+    inventoryStock: 'నిల్వ నిర్వహణ',
+    artisanEarnings: 'కళాకారుని ఆదాయం',
   },
   bn: {
     appTitle: 'ভারত টিউলিপ কারিগর সাথী',
@@ -535,6 +556,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'পণ্য তালিকা',
     tableOrders: 'অর্ডার তালিকা',
     schemaDetails: 'ডাটাবেজ স্কিমা ও তথ্য',
+    addNewProductBtn: 'নতুন পণ্য যোগ করুন',
+    analyticsOverview: 'বিশ্লেষণ দৃশ্য',
+    inventoryStock: 'মজুদ ব্যবস্থাপনা',
+    artisanEarnings: 'কারিগরের আয়',
   },
   mr: {
     appTitle: 'भारत ट्यूलिप कारागीर मंच',
@@ -606,6 +631,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'उत्पादने तक्ता',
     tableOrders: 'ऑर्डर्स तक्ता',
     schemaDetails: 'डेटाबेस स्कीमा आणि नोंदी',
+    addNewProductBtn: 'नवीन उत्पादन जोडा',
+    analyticsOverview: 'विश्लेषण दृश्य',
+    inventoryStock: 'साठा व्यवस्थापन',
+    artisanEarnings: 'कारागीर उत्पन्न',
   },
   gu: {
     appTitle: 'ભારત ટ્યૂલિપ કારીગર મંચ',
@@ -677,6 +706,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ઉત્પાદનોનું કોષ્ટક',
     tableOrders: 'ઓર્ડર્સનું કોષ્ટક',
     schemaDetails: 'ડેટાબેઝ સ્કીમા વિગતો',
+    addNewProductBtn: 'નવું ઉત્પાદન ઉમેરો',
+    analyticsOverview: 'વિશ્લેષણ ઝાંખી',
+    inventoryStock: 'સ્ટોક વ્યવસ્થાપન',
+    artisanEarnings: 'કારીગર આવક',
   },
   kn: {
     appTitle: 'ಭಾರತ ಟುಲಿಪ್ ಕುಶಲಕರ್ಮಿ ವೇದಿಕೆ',
@@ -748,6 +781,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ಉತ್ಪನ್ನಗಳ ಪಟ್ಟಿ',
     tableOrders: 'ಆದೇಶಗಳ ಪಟ್ಟಿ',
     schemaDetails: 'ಡೇಟಾಬೇಸ್ ವಿವರಗಳು',
+    addNewProductBtn: 'ಹೊಸ ಉತ್ಪನ್ನ ಸೇರಿಸಿ',
+    analyticsOverview: 'ವಿಶ್ಲೇಷಣೆ',
+    inventoryStock: 'ದಾಸ್ತಾನು ನಿರ್ವಹಣೆ',
+    artisanEarnings: 'ಕುಶಲಕರ್ಮಿ ಆದಾಯ',
   },
   ml: {
     appTitle: 'ഭാരത് ട്യൂലിപ് കരകൗശല സഹായി',
@@ -819,6 +856,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ഉൽപ്പന്നങ്ങൾ',
     tableOrders: 'ഓർഡറുകൾ',
     schemaDetails: 'ഡാറ്റാബേസ് വിവരങ്ങൾ',
+    addNewProductBtn: 'പുതിയ ഉൽപ്പന്നം ചേർക്കുക',
+    analyticsOverview: 'വിശകലനം',
+    inventoryStock: 'സ്റ്റോക്ക് മാനേജ്‌മെന്റ്',
+    artisanEarnings: 'കരകൗശല വരുമാനം',
   },
   or: {
     appTitle: 'ଭାରତ ଟିଉଲିପ୍ କାରିଗର ସାଥୀ',
@@ -890,6 +931,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ଉତ୍ପାଦ ତାଲିକା',
     tableOrders: 'ଅର୍ଡର ତାଲିକା',
     schemaDetails: 'ଡାଟାବେସ୍ ସ୍କିମା ରେକର୍ଡ',
+    addNewProductBtn: 'ନୂଆ ଉତ୍ପାଦ ଯୋଡ଼ନ୍ତୁ',
+    analyticsOverview: 'ବିଶ୍ଳେଷଣ ଦୃଶ୍ୟ',
+    inventoryStock: 'ଷ୍ଟକ୍ ପରିଚାଳନା',
+    artisanEarnings: 'କାରିଗର ଆୟ',
   },
   pa: {
     appTitle: 'ਭਾਰਤ ਟਿਊਲਿਪ ਦਸਤਕਾਰ ਮੰਚ',
@@ -961,6 +1006,10 @@ export const TRANSLATIONS: Record<SupportedLanguageCode, UiTranslations> = {
     tableProducts: 'ਉਤਪਾਦ ਸੂਚੀ',
     tableOrders: 'ਆਰਡਰ ਸੂਚੀ',
     schemaDetails: 'ਡਾਟਾਬੇਸ ਸਕੀਮਾ ਵੇਰਵਾ',
+    addNewProductBtn: 'ਨਵਾਂ ਉਤਪਾਦ ਜੋੜੋ',
+    analyticsOverview: 'ਵਿਸ਼ਲੇਸ਼ਣ ਦ੍ਰਿਸ਼',
+    inventoryStock: 'ਸਟਾਕ ਪ੍ਰਬੰਧਨ',
+    artisanEarnings: 'ਦਸਤਕਾਰ ਕਮਾਈ',
   },
 };
 

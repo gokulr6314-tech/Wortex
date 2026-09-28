@@ -400,7 +400,7 @@ export const GeminiLiveVoiceModal: React.FC<GeminiLiveVoiceModalProps> = ({
   }, [abortAudioAndMic, onClose]);
 
   // Declare activateHandsFreeListening and executeTurn signatures
-  const activateHandsFreeListeningRef = useRef<() => void>(() => {});
+  const activateHandsFreeListeningRef = useRef<(delayMs?: number) => void>(() => {});
   const executeTurnRef = useRef<(step: TurnStep, draft: DraftCatalogueData) => void>(() => {});
 
   // Process turn answer and transition
