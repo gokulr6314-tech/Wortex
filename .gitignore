@@ -8,3 +8,5 @@ coverage/
 !.env.example
 .vscode/
 .aider-desk/
+.agents/
+skills-lock.json

@@ -55,6 +55,7 @@ import { VoiceAuthGate, AuthSession } from './components/VoiceAuthGate';
 import VoiceListingTrigger from './components/voice/VoiceListingTrigger';
 import VoiceListingAssistant from './components/voice/VoiceListingAssistant';
 import { BuyerMarketplaceView } from './components/BuyerMarketplaceView';
+import { ArtisanDirectoryView } from './components/ArtisanDirectoryView';
 import { buildAltText } from './services/seo/altText';
 import {
   ResponsiveContainer,
@@ -89,6 +90,7 @@ export default function App() {
 
   // App Data State (Synced from DatabaseStore / mockData)
   const [artisan, setArtisan] = useState<ArtisanProfile>(() => DatabaseStore.getArtisan());
+  const [artisans, setArtisans] = useState<ArtisanProfile[]>(() => DatabaseStore.getStoredArtisans());
   const [products, setProducts] = useState<ProductListing[]>(() => {
     const saved = DatabaseStore.getProducts();
     return saved.length > 0 ? saved : INITIAL_PRODUCTS;
@@ -104,9 +106,12 @@ export default function App() {
 
   // Sync latest records from Supabase on app mount
   useEffect(() => {
-    DatabaseStore.syncFromSupabase().then(({ artisan: remoteArtisan, products: remoteProducts }) => {
+    DatabaseStore.syncFromSupabase().then(({ artisan: remoteArtisan, artisans: remoteArtisans, products: remoteProducts }) => {
       if (remoteArtisan) {
         setArtisan(remoteArtisan);
+      }
+      if (remoteArtisans && remoteArtisans.length > 0) {
+        setArtisans(remoteArtisans);
       }
       if (remoteProducts && remoteProducts.length > 0) {
         setProducts(remoteProducts);
@@ -137,15 +142,50 @@ export default function App() {
       setActiveTab('catalogue');
     }
     if (session.identifier) {
-      const current = DatabaseStore.getArtisan();
-      const updated: ArtisanProfile = {
-        ...current,
-        name: session.identifier.trim(),
-        village: session.address ? session.address.trim() : current.village,
-      };
-      setArtisan(updated);
-      DatabaseStore.saveArtisan(updated);
+      const storedList = DatabaseStore.getStoredArtisans();
+      const existing = storedList.find(
+        (a) => a.name.toLowerCase() === session.identifier.trim().toLowerCase()
+      );
+
+      const targetProfile: ArtisanProfile = existing
+        ? {
+            ...existing,
+            village: session.address ? session.address.trim() : existing.village,
+          }
+        : {
+            id: `artisan_${Date.now().toString().slice(-6)}`,
+            name: session.identifier.trim(),
+            phone: '+91 98' + Math.floor(10000000 + Math.random() * 89999999),
+            village: session.address ? session.address.trim() : 'Gorakhpur, Uttar Pradesh',
+            state: 'Uttar Pradesh',
+            craftType: 'Traditional Handicrafts',
+            experienceYears: 5,
+            language,
+            avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+            totalEarnings: 0,
+            activeListingsCount: 0,
+            totalOrdersCount: 0,
+            rating: 5.0,
+            verified: true,
+            createdAt: new Date().toISOString(),
+          };
+
+      setArtisan(targetProfile);
+      DatabaseStore.saveArtisan(targetProfile).then(() => {
+        DatabaseStore.getAllArtisans().then(setArtisans);
+      });
     }
+  };
+
+  const handleRefreshArtisans = async () => {
+    const list = await DatabaseStore.getAllArtisans();
+    setArtisans(list);
+  };
+
+  const handleEnrollArtisan = async (newArtisan: ArtisanProfile) => {
+    await DatabaseStore.saveArtisan(newArtisan);
+    const updated = await DatabaseStore.getAllArtisans();
+    setArtisans(updated);
   };
 
   const handleToggleRole = () => {
@@ -265,6 +305,7 @@ export default function App() {
         isVoiceActive={isVoiceModalOpen}
         ordersCount={orders.length}
         productsCount={products.length}
+        artisansCount={artisans.length}
         userRole={userRole}
         onToggleRole={handleToggleRole}
       />
@@ -845,6 +886,21 @@ export default function App() {
               </div>
             </div>
           </div>
+        )}
+
+        {/* ======================================================== */}
+        {/* TAB 5: ENROLLED ARTISANS REGISTRY */}
+        {/* ======================================================== */}
+        {activeTab === 'artisans' && (
+          <ArtisanDirectoryView
+            artisans={artisans}
+            onRefreshArtisans={handleRefreshArtisans}
+            onEnrollArtisan={handleEnrollArtisan}
+            currentLanguage={language}
+            onArtisanSelect={(_selectedArtisanId) => {
+              setActiveTab('catalogue');
+            }}
+          />
         )}
       </main>
 

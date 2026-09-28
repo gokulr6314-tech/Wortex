@@ -102,104 +102,211 @@ export class SpeechService {
       return;
     }
 
-    const speakNow = () => {
-      try {
-        window.speechSynthesis.cancel(); // cancel any ongoing speech
-        if (window.speechSynthesis.paused) {
-          window.speechSynthesis.resume();
-        }
+    const speakNative = () => {
+      const speakNow = () => {
+        try {
+          window.speechSynthesis.cancel(); // cancel any ongoing speech
+          if (window.speechSynthesis.paused) {
+            window.speechSynthesis.resume();
+          }
 
-        const utterance = new SpeechSynthesisUtterance(text);
-        // Retain global reference to prevent Chrome's garbage-collection bug on desktop
-        (window as any).__activeUtterance = utterance;
+          const utterance = new SpeechSynthesisUtterance(text);
+          // Retain global reference to prevent Chrome's garbage-collection bug on desktop
+          (window as any).__activeUtterance = utterance;
 
-        const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === languageCode);
-        const targetLocale = langConfig ? langConfig.speechLocale : 'en-IN';
+          const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === languageCode);
+          const targetLocale = langConfig ? langConfig.speechLocale : 'en-IN';
 
-        const voices =
-          this.cachedVoices && this.cachedVoices.length
-            ? this.cachedVoices
-            : window.speechSynthesis.getVoices();
+          const voices =
+            this.cachedVoices && this.cachedVoices.length
+              ? this.cachedVoices
+              : window.speechSynthesis.getVoices();
 
-        if (voices && voices.length) {
-          this.cachedVoices = voices;
-          const resolved = resolveVoice(languageCode, voices);
-          if (resolved.voice) {
-            utterance.voice = resolved.voice;
-            // If the matched voice is native regional, keep the regional target locale.
-            // If falling back to English on desktop, use the voice's locale so Windows SAPI doesn't abort.
-            utterance.lang = resolved.matched ? targetLocale : resolved.voice.lang;
+          if (voices && voices.length) {
+            this.cachedVoices = voices;
+            const resolved = resolveVoice(languageCode, voices);
+            if (resolved.voice) {
+              utterance.voice = resolved.voice;
+              // If the matched voice is native regional, keep the regional target locale.
+              // If falling back to English on desktop, use the voice's locale so Windows SAPI doesn't abort.
+              utterance.lang = resolved.matched ? targetLocale : resolved.voice.lang;
+            } else {
+              utterance.lang = targetLocale;
+            }
           } else {
             utterance.lang = targetLocale;
           }
-        } else {
-          utterance.lang = targetLocale;
-        }
 
-        utterance.rate = 0.95; // slightly slower for clear listening
-        utterance.pitch = 1.05; // warm, friendly tone
+          utterance.rate = 0.95; // slightly slower for clear listening
+          utterance.pitch = 1.05; // warm, friendly tone
 
-        let hasFinished = false;
-        const finish = () => {
-          if (hasFinished) return;
-          hasFinished = true;
-          (window as any).__activeUtterance = null;
-          this.stopKeepalive();
-          if (onEnd) onEnd();
-        };
+          let hasFinished = false;
+          const finish = () => {
+            if (hasFinished) return;
+            hasFinished = true;
+            (window as any).__activeUtterance = null;
+            this.stopKeepalive();
+            if (onEnd) onEnd();
+          };
 
-        utterance.onstart = () => {
-          this.startKeepalive(); // begin Chrome keepalive once speech actually starts
-          if (onStart) onStart();
-        };
-        utterance.onend = finish;
-        utterance.onerror = (e) => {
-          console.warn('Speech synthesis event:', e.error);
-          finish();
-        };
-
-        // Micro-delay prevents Chromium on desktop from dropping new utterance immediately after cancel()
-        setTimeout(() => {
-          try {
-            if (window.speechSynthesis.paused) {
-              window.speechSynthesis.resume();
-            }
-            window.speechSynthesis.speak(utterance);
-          } catch (err) {
-            console.error('Speech call error:', err);
+          utterance.onstart = () => {
+            this.startKeepalive(); // begin Chrome keepalive once speech actually starts
+            if (onStart) onStart();
+          };
+          utterance.onend = finish;
+          utterance.onerror = (e) => {
+            console.warn('Speech synthesis event:', e.error);
             finish();
-          }
-        }, 25);
-      } catch (err) {
-        console.error('Speech error:', err);
-        if (onEnd) onEnd();
+          };
+
+          // Micro-delay prevents Chromium on desktop from dropping new utterance immediately after cancel()
+          setTimeout(() => {
+            try {
+              if (window.speechSynthesis.paused) {
+                window.speechSynthesis.resume();
+              }
+              window.speechSynthesis.speak(utterance);
+            } catch (err) {
+              console.error('Speech call error:', err);
+              finish();
+            }
+          }, 25);
+        } catch (err) {
+          console.error('Speech error:', err);
+          if (onEnd) onEnd();
+        }
+      };
+
+      const voicesReady =
+        this.cachedVoices && this.cachedVoices.length
+          ? this.cachedVoices
+          : window.speechSynthesis.getVoices();
+      if (voicesReady.length) {
+        speakNow();
+        return;
       }
+
+      preloadVoices()
+        .then((voices) => {
+          this.cachedVoices = voices && voices.length ? voices : window.speechSynthesis.getVoices();
+          speakNow();
+        })
+        .catch(() => speakNow());
     };
 
-    const voicesReady =
-      this.cachedVoices && this.cachedVoices.length
-        ? this.cachedVoices
-        : window.speechSynthesis.getVoices();
-    if (voicesReady.length) {
-      speakNow();
-      return;
-    }
-
-    preloadVoices()
-      .then((voices) => {
-        this.cachedVoices = voices && voices.length ? voices : window.speechSynthesis.getVoices();
-        speakNow();
+    // Attempt Bhashini TTS first
+    fetch('/api/bhashini/tts', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text, language: languageCode }),
+    })
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.success && data.audioBase64) {
+          try {
+            if (this.activeAudioElement) {
+              this.activeAudioElement.pause();
+              this.activeAudioElement = null;
+            }
+            const audio = new Audio(`data:audio/${data.audioFormat || 'wav'};base64,${data.audioBase64}`);
+            this.activeAudioElement = audio;
+            audio.onplay = () => { if (onStart) onStart(); };
+            audio.onended = () => {
+              this.activeAudioElement = null;
+              if (onEnd) onEnd();
+            };
+            audio.onerror = () => {
+              console.warn('Bhashini audio playback failed, falling back to native TTS');
+              speakNative();
+            };
+            audio.play().catch((err) => {
+              console.warn('Audio play error, falling back', err);
+              speakNative();
+            });
+          } catch (e) {
+            console.warn('Audio setup error, falling back', e);
+            speakNative();
+          }
+        } else {
+          speakNative();
+        }
       })
-      .catch(() => speakNow());
+      .catch((err) => {
+        console.warn('Bhashini TTS fetch failed, falling back to native TTS', err);
+        speakNative();
+      });
   }
 
   static stopSpeaking(): void {
+    if (this.activeAudioElement) {
+      this.activeAudioElement.pause();
+      this.activeAudioElement = null;
+    }
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
   }
 
-  // Starts microphone voice recognition with browser support fallback.
+  private static mediaRecorder: MediaRecorder | null = null;
+  private static audioStream: MediaStream | null = null;
+  private static audioChunks: Blob[] = [];
+
+  // Helper to resample audio and convert to 16kHz WAV base64
+  private static async getWavBase64(blob: Blob): Promise<string> {
+    const arrayBuffer = await blob.arrayBuffer();
+    const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+    
+    const sampleRate = 16000;
+    const offlineCtx = new OfflineAudioContext(1, Math.max(1, audioBuffer.duration * sampleRate), sampleRate);
+    const source = offlineCtx.createBufferSource();
+    source.buffer = audioBuffer;
+    source.connect(offlineCtx.destination);
+    source.start(0);
+    const renderedBuffer = await offlineCtx.startRendering();
+    
+    const length = renderedBuffer.length;
+    const channelData = renderedBuffer.getChannelData(0);
+    const wavBuffer = new ArrayBuffer(44 + length * 2);
+    const view = new DataView(wavBuffer);
+    
+    const writeString = (v: DataView, offset: number, str: string) => {
+      for (let i = 0; i < str.length; i++) {
+        v.setUint8(offset + i, str.charCodeAt(i));
+      }
+    };
+    writeString(view, 0, 'RIFF');
+    view.setUint32(4, 36 + length * 2, true);
+    writeString(view, 8, 'WAVE');
+    writeString(view, 12, 'fmt ');
+    view.setUint32(16, 16, true);
+    view.setUint16(20, 1, true); 
+    view.setUint16(22, 1, true); 
+    view.setUint32(24, sampleRate, true); 
+    view.setUint32(28, sampleRate * 2, true); 
+    view.setUint16(32, 2, true); 
+    view.setUint16(34, 16, true); 
+    writeString(view, 36, 'data');
+    view.setUint32(40, length * 2, true);
+    
+    let offset = 44;
+    for (let i = 0; i < length; i++) {
+      const s = Math.max(-1, Math.min(1, channelData[i]));
+      view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+      offset += 2;
+    }
+    
+    const wavBlob = new Blob([view], { type: 'audio/wav' });
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(wavBlob);
+      reader.onloadend = () => {
+        resolve((reader.result as string).split(',')[1]);
+      };
+    });
+  }
+
+  // Starts microphone voice recognition using Bhashini ASR
   // Always cancels TTS first and waits 300ms before opening the mic to
   // prevent the bot recording its own synthesised voice (echo/feedback bug).
   static startListening(
@@ -207,85 +314,84 @@ export class SpeechService {
     handlers: SpeechRecognitionResultHandler
   ): boolean {
     if (typeof window === 'undefined') return false;
-
-    const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-    if (!SpeechRec) {
+    if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
       handlers.onError('Microphone speech recognition not available in this browser');
       return false;
     }
 
-    // Stop any ongoing TTS before opening mic (prevents echo/feedback loop)
     this.stopSpeaking();
     this.stopKeepalive();
 
-    const startRec = () => {
+    const startRec = async () => {
       try {
-        if (this.recognition) {
-          try {
-            this.recognition.abort();
-          } catch {
-            // ignore
-          }
+        if (this.mediaRecorder) {
+          this.stopListening();
         }
 
-        const langConfig = SUPPORTED_LANGUAGES.find((l) => l.code === languageCode);
-        const targetLocale = langConfig ? langConfig.speechLocale : 'en-IN';
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        this.audioStream = stream;
+        this.mediaRecorder = new MediaRecorder(stream);
+        this.audioChunks = [];
 
-        this.recognition = new SpeechRec();
-        this.recognition.continuous = false;
-        this.recognition.interimResults = true;
-        this.recognition.lang = targetLocale;
-
-        this.recognition.onstart = () => {
-          this.isListeningState = true;
+        this.mediaRecorder.ondataavailable = (event) => {
+          if (event.data.size > 0) {
+            this.audioChunks.push(event.data);
+          }
         };
 
-        this.recognition.onresult = (event: any) => {
-          let interim = '';
-          let final = '';
+        this.mediaRecorder.onstop = async () => {
+          this.isListeningState = false;
+          if (this.audioStream) {
+            this.audioStream.getTracks().forEach((track) => track.stop());
+            this.audioStream = null;
+          }
 
-          for (let i = event.resultIndex; i < event.results.length; ++i) {
-            if (event.results[i].isFinal) {
-              final += event.results[i][0].transcript;
+          if (this.audioChunks.length === 0) {
+            handlers.onEnd();
+            return;
+          }
+
+          handlers.onResult('Thinking...', false); // Interim feedback while Bhashini processes
+
+          try {
+            const rawBlob = new Blob(this.audioChunks, { type: this.mediaRecorder?.mimeType || 'audio/webm' });
+            const base64data = await this.getWavBase64(rawBlob);
+
+            const res = await fetch('/api/bhashini/asr', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ audioBase64: base64data, language: languageCode })
+            });
+
+            const data = await res.json();
+            if (data && data.success && data.text) {
+              handlers.onResult(data.text, true);
             } else {
-              interim += event.results[i][0].transcript;
+              handlers.onError('Could not understand audio');
             }
+          } catch (err) {
+            console.error('ASR error:', err);
+            handlers.onError('ASR Request failed');
           }
-
-          if (final) {
-            handlers.onResult(final, true);
-          } else if (interim) {
-            handlers.onResult(interim, false);
-          }
-        };
-
-        this.recognition.onerror = (event: any) => {
-          this.isListeningState = false;
-          handlers.onError(event.error || 'Speech capture error');
-        };
-
-        this.recognition.onend = () => {
-          this.isListeningState = false;
           handlers.onEnd();
         };
 
-        this.recognition.start();
+        this.mediaRecorder.start();
+        this.isListeningState = true;
       } catch (err: any) {
         this.isListeningState = false;
         handlers.onError(err.message || 'Failed to start microphone');
       }
     };
 
-    // 300ms silence gap ensures TTS audio fully drains from speakers before
-    // the mic opens — prevents the recognition engine from picking up the bot's own voice.
     setTimeout(startRec, 300);
     return true;
   }
 
   static stopListening(): void {
-    if (this.recognition && this.isListeningState) {
+    if (this.mediaRecorder && this.isListeningState) {
       try {
-        this.recognition.stop();
+        this.mediaRecorder.stop();
       } catch {
         // ignore
       }

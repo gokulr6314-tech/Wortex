@@ -7,11 +7,12 @@ import {
   Package,
   Globe2,
   BarChart3,
+  Users,
 } from 'lucide-react';
 import { SupportedLanguageCode } from '../types';
 import { SUPPORTED_LANGUAGES } from '../lib/languages';
 
-export type ActiveNavTab = 'catalogue' | 'orders' | 'market_linkage' | 'analytics';
+export type ActiveNavTab = 'catalogue' | 'orders' | 'market_linkage' | 'analytics' | 'artisans';
 
 interface NavbarProps {
   activeTab: ActiveNavTab;
@@ -24,6 +25,7 @@ interface NavbarProps {
   isVoiceActive?: boolean;
   ordersCount?: number;
   productsCount?: number;
+  artisansCount?: number;
   userRole?: 'Buyer' | 'Seller';
   onToggleRole?: () => void;
 }
@@ -39,6 +41,7 @@ export const Navbar: React.FC<NavbarProps> = ({
   isVoiceActive = false,
   ordersCount = 0,
   productsCount = 0,
+  artisansCount = 0,
   userRole = 'Seller',
   onToggleRole,
 }) => {
@@ -119,10 +122,29 @@ export const Navbar: React.FC<NavbarProps> = ({
                   }`}
                 >
                   <Package className="w-3.5 h-3.5 text-[#2d6a4f]" />
-                  <span>My Orders</span>
+                  <span>Track Orders</span>
                   {ordersCount > 0 && (
                     <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
                       {ordersCount}
+                    </span>
+                  )}
+                </button>
+
+                {/* Artisans Directory (Buyer view) */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('artisans')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'artisans'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Artisans</span>
+                  {artisansCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {artisansCount}
                     </span>
                   )}
                 </button>
@@ -194,6 +216,25 @@ export const Navbar: React.FC<NavbarProps> = ({
                 >
                   <BarChart3 className="w-3.5 h-3.5 text-[#2d6a4f]" />
                   <span>Shop Analytics</span>
+                </button>
+
+                {/* Artisans Directory (Seller view) */}
+                <button
+                  type="button"
+                  onClick={() => onSelectTab('artisans')}
+                  className={`flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer ${
+                    activeTab === 'artisans'
+                      ? 'bg-white text-[#1b4332] shadow-[2px_2px_8px_#c8d6c8,-2px_-2px_8px_#ffffff] border border-white/80'
+                      : 'text-[#455A45] hover:text-[#1b4332] hover:bg-white/40'
+                  }`}
+                >
+                  <Users className="w-3.5 h-3.5 text-[#2d6a4f]" />
+                  <span>Artisans</span>
+                  {artisansCount > 0 && (
+                    <span className="px-1.5 py-0.2 rounded-full text-[10px] font-extrabold bg-[#d8f3dc] text-[#1b4332]">
+                      {artisansCount}
+                    </span>
+                  )}
                 </button>
               </>
             )}
@@ -272,7 +313,19 @@ export const Navbar: React.FC<NavbarProps> = ({
                 }`}
               >
                 <Package className="w-3.5 h-3.5" />
-                <span>My Orders</span>
+                <span>Orders</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('artisans')}
+                className={`flex items-center gap-1.5 py-1 px-3 rounded-lg transition-colors ${
+                  activeTab === 'artisans'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Artisans</span>
               </button>
               {onToggleRole && (
                 <button
@@ -333,6 +386,18 @@ export const Navbar: React.FC<NavbarProps> = ({
               >
                 <BarChart3 className="w-3.5 h-3.5" />
                 <span>Analytics</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => onSelectTab('artisans')}
+                className={`flex items-center gap-1.5 py-1 px-2.5 rounded-lg transition-colors ${
+                  activeTab === 'artisans'
+                    ? 'bg-white text-[#1b4332] shadow-xs'
+                    : 'text-[#455A45]'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Artisans</span>
               </button>
             </>
           )}

@@ -1,6 +1,6 @@
 import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { ArtisanProfile, Order, ProductListing, AnalyticsMetrics } from '../types';
-import { INITIAL_ARTISAN, INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_ANALYTICS } from './mockData';
+import { INITIAL_ARTISAN, INITIAL_ARTISANS, INITIAL_PRODUCTS, INITIAL_ORDERS, INITIAL_ANALYTICS } from './mockData';
 
 const DEFAULT_SUPABASE_URL = 'https://etfyipqxfkigozryosrc.supabase.co';
 const DEFAULT_SUPABASE_ANON_KEY = 'sb_publishable_8FvPjZhFDoIJ-mUnSVm6fA_TWrn0Vae';
@@ -128,10 +128,31 @@ CREATE POLICY "Allow public read/write to orders" ON orders FOR ALL USING (true)
 // Local Persistence Storage Manager with Supabase Mirroring
 const STORAGE_KEYS = {
   ARTISANS: 'bharat_tulip_artisans_v1',
+  ARTISANS_LIST: 'bharat_tulip_artisans_list_v1',
   PRODUCTS: 'bharat_tulip_products_v1',
   ORDERS: 'bharat_tulip_orders_v1',
   ANALYTICS: 'bharat_tulip_analytics_v1',
 };
+
+export function mapRowToArtisan(row: any): ArtisanProfile {
+  return {
+    id: row.id || `artisan_${Date.now().toString().slice(-6)}`,
+    name: row.name || 'Traditional Artisan',
+    phone: row.phone || '+91 98765 43210',
+    village: row.village || 'Naurangabad, Gorakhpur',
+    state: row.state || 'Uttar Pradesh',
+    craftType: row.craft_type || row.craftType || 'Traditional Handicrafts',
+    experienceYears: Number(row.experience_years || row.experienceYears) || 1,
+    language: (row.language as any) || 'en',
+    avatarUrl: row.avatar_url || row.avatarUrl || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
+    totalEarnings: Number(row.total_earnings || row.totalEarnings) || 0,
+    activeListingsCount: Number(row.active_listings_count || row.activeListingsCount) || 0,
+    totalOrdersCount: Number(row.total_orders_count || row.totalOrdersCount) || 0,
+    rating: Number(row.rating) || 5.0,
+    verified: Boolean(row.verified !== undefined ? row.verified : true),
+    createdAt: row.created_at || row.createdAt || new Date().toISOString(),
+  };
+}
 
 export class DatabaseStore {
   private static getStoredItem<T>(key: string, fallback: T): T {
@@ -153,7 +174,7 @@ export class DatabaseStore {
     }
   }
 
-  // Artisan API
+  // Artisan API - Single Active Profile
   static getArtisan(): ArtisanProfile {
     const artisan = this.getStoredItem<ArtisanProfile>(STORAGE_KEYS.ARTISANS, INITIAL_ARTISAN);
     if (!artisan.language) {
@@ -162,8 +183,79 @@ export class DatabaseStore {
     return artisan;
   }
 
+  // Artisan API - All Enrolled Artisans
+  static getStoredArtisans(): ArtisanProfile[] {
+    const list = this.getStoredItem<ArtisanProfile[]>(STORAGE_KEYS.ARTISANS_LIST, INITIAL_ARTISANS);
+    return list && list.length > 0 ? list : INITIAL_ARTISANS;
+  }
+
+  static async getAllArtisans(): Promise<ArtisanProfile[]> {
+    try {
+      const res = await fetch('/api/artisans');
+      const data = await res.json();
+      if (res.ok && data.success && Array.isArray(data.data) && data.data.length > 0) {
+        const fetched = data.data.map(mapRowToArtisan);
+        
+        // Merge with initial catalog to ensure rich representation
+        const existingIds = new Set(fetched.map((a: ArtisanProfile) => a.id));
+        const merged = [...fetched];
+        for (const item of INITIAL_ARTISANS) {
+          if (!existingIds.has(item.id)) {
+            merged.push(item);
+          }
+        }
+        
+        this.setStoredItem(STORAGE_KEYS.ARTISANS_LIST, merged);
+        return merged;
+      }
+    } catch (err) {
+      console.warn('[DatabaseStore] API error fetching artisans, falling back to Supabase direct:', err);
+    }
+
+    if (supabase) {
+      try {
+        const { data: rows, error } = await supabase
+          .from('artisans')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (!error && rows && rows.length > 0) {
+          const fetched = rows.map(mapRowToArtisan);
+          const existingIds = new Set(fetched.map((a: ArtisanProfile) => a.id));
+          const merged = [...fetched];
+          for (const item of INITIAL_ARTISANS) {
+            if (!existingIds.has(item.id)) {
+              merged.push(item);
+            }
+          }
+          this.setStoredItem(STORAGE_KEYS.ARTISANS_LIST, merged);
+          return merged;
+        }
+      } catch (err) {
+        console.warn('[DatabaseStore] Direct Supabase fetch error for artisans:', err);
+      }
+    }
+
+    return this.getStoredArtisans();
+  }
+
   static async saveArtisan(profile: ArtisanProfile): Promise<void> {
+    // 1. Update active artisan
     this.setStoredItem(STORAGE_KEYS.ARTISANS, profile);
+
+    // 2. Update list of all enrolled artisans
+    const currentList = this.getStoredArtisans();
+    const existingIndex = currentList.findIndex(
+      (a) => a.id === profile.id || (profile.phone && a.phone === profile.phone)
+    );
+    let updatedList: ArtisanProfile[];
+    if (existingIndex >= 0) {
+      updatedList = [...currentList];
+      updatedList[existingIndex] = { ...updatedList[existingIndex], ...profile };
+    } else {
+      updatedList = [profile, ...currentList];
+    }
+    this.setStoredItem(STORAGE_KEYS.ARTISANS_LIST, updatedList);
     
     // STEP 7: Mobile App -> Backend API -> Supabase
     try {
@@ -215,6 +307,7 @@ export class DatabaseStore {
 
   static async syncFromSupabase(): Promise<{
     artisan?: ArtisanProfile;
+    artisans?: ArtisanProfile[];
     products?: ProductListing[];
   }> {
     // 1. Try fetching through Backend API first
@@ -225,28 +318,14 @@ export class DatabaseStore {
       ]);
 
       let fetchedArtisan: ArtisanProfile | undefined;
+      let fetchedArtisans: ArtisanProfile[] | undefined;
       let fetchedProducts: ProductListing[] | undefined;
 
       if (artisanRes.status === 'fulfilled' && artisanRes.value?.success && artisanRes.value.data?.length > 0) {
-        const row = artisanRes.value.data[0];
-        fetchedArtisan = {
-          id: row.id,
-          name: row.name,
-          phone: row.phone || '+91 98765 43210',
-          village: row.village || 'Naurangabad, Gorakhpur',
-          state: row.state || 'Uttar Pradesh',
-          craftType: row.craft_type || 'Traditional Handicrafts',
-          experienceYears: row.experience_years || 1,
-          language: (row.language as any) || 'en',
-          avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-          totalEarnings: Number(row.total_earnings) || 0,
-          activeListingsCount: Number(row.active_listings_count) || 0,
-          totalOrdersCount: Number(row.total_orders_count) || 0,
-          rating: Number(row.rating) || 5.0,
-          verified: Boolean(row.verified),
-          createdAt: row.created_at,
-        };
+        fetchedArtisans = artisanRes.value.data.map(mapRowToArtisan);
+        fetchedArtisan = fetchedArtisans[0];
         this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
+        this.setStoredItem(STORAGE_KEYS.ARTISANS_LIST, fetchedArtisans);
       }
 
       if (productsRes.status === 'fulfilled' && productsRes.value?.success && productsRes.value.data?.length > 0) {
@@ -287,8 +366,8 @@ export class DatabaseStore {
         this.setStoredItem(STORAGE_KEYS.PRODUCTS, fetchedProducts);
       }
 
-      if (fetchedArtisan || fetchedProducts) {
-        return { artisan: fetchedArtisan, products: fetchedProducts };
+      if (fetchedArtisan || fetchedArtisans || fetchedProducts) {
+        return { artisan: fetchedArtisan, artisans: fetchedArtisans, products: fetchedProducts };
       }
     } catch (e) {
       console.warn('[API Client] Backend sync error, falling back to direct Supabase:', e);
@@ -300,34 +379,20 @@ export class DatabaseStore {
       const { data: artisanRows, error: artisanErr } = await supabase
         .from('artisans')
         .select('*')
-        .order('created_at', { ascending: false })
-        .limit(1);
+        .order('created_at', { ascending: false });
 
       let fetchedArtisan: ArtisanProfile | undefined;
+      let fetchedArtisans: ArtisanProfile[] | undefined;
       if (!artisanErr && artisanRows && artisanRows.length > 0) {
-        const row = artisanRows[0];
-        fetchedArtisan = {
-          id: row.id,
-          name: row.name,
-          phone: row.phone || '+91 98765 43210',
-          village: row.village || 'Naurangabad, Gorakhpur',
-          state: row.state || 'Uttar Pradesh',
-          craftType: row.craft_type || 'Traditional Handicrafts',
-          experienceYears: row.experience_years || 1,
-          language: (row.language as any) || 'en',
-          avatarUrl: row.avatar_url || 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=400&q=80',
-          totalEarnings: Number(row.total_earnings) || 0,
-          activeListingsCount: Number(row.active_listings_count) || 0,
-          totalOrdersCount: Number(row.total_orders_count) || 0,
-          rating: Number(row.rating) || 5.0,
-          verified: Boolean(row.verified),
-          createdAt: row.created_at,
-        };
+        fetchedArtisans = artisanRows.map(mapRowToArtisan);
+        fetchedArtisan = fetchedArtisans[0];
         this.setStoredItem(STORAGE_KEYS.ARTISANS, fetchedArtisan);
+        this.setStoredItem(STORAGE_KEYS.ARTISANS_LIST, fetchedArtisans);
       } else if (!artisanErr && (!artisanRows || artisanRows.length === 0)) {
         const defaultArtisan = this.getArtisan();
         await this.saveArtisan(defaultArtisan);
         fetchedArtisan = defaultArtisan;
+        fetchedArtisans = [defaultArtisan];
       }
 
       const { data: productRows, error: prodErr } = await supabase
@@ -374,7 +439,7 @@ export class DatabaseStore {
         this.setStoredItem(STORAGE_KEYS.PRODUCTS, fetchedProducts);
       }
 
-      return { artisan: fetchedArtisan, products: fetchedProducts };
+      return { artisan: fetchedArtisan, artisans: fetchedArtisans, products: fetchedProducts };
     } catch (e) {
       console.warn('Sync from Supabase failed:', e);
       return {};

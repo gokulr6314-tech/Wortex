@@ -792,6 +792,7 @@ const handleArtisanSave = async (req: express.Request, res: express.Response) =>
       total_orders_count: Number(body.totalOrdersCount || body.total_orders_count) || 0,
       rating: Number(body.rating) || 5.0,
       verified: body.verified !== undefined ? Boolean(body.verified) : true,
+      created_at: body.createdAt || body.created_at || new Date().toISOString(),
     };
 
     console.log('[BACKEND API] [POST /api/artisans] Sending mapped record to Supabase table: artisans');
